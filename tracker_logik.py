@@ -2,16 +2,29 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 import requests
 import os
+import streamlit as st
+import json
 
 # ==========================================
-# 1. INITIALISIERUNG
+# 1. INITIALISIERUNG (Cloud & Lokal)
 # ==========================================
-# Absoluten Pfad zur Schlüssel-Datei ermitteln
-base_path = os.path.dirname(__file__)
-key_path = os.path.join(base_path, "firebase_key.json")
-
 if not firebase_admin._apps:
-    cred = credentials.Certificate(key_path) # Nutzt jetzt den sicheren Pfad
+    # Checken, ob wir in der Streamlit Cloud sind (Secrets vorhanden)
+    if "firebase" in st.secrets:
+        # Daten aus den Streamlit Secrets laden
+        secret_dict = json.loads(st.secrets["firebase"]["text"])
+        cred = credentials.Certificate(secret_dict)
+    else:
+        # Lokal: Suche nach der Datei (Rettungsanker für deinen PC)
+        from pathlib import Path
+        script_dir = Path(__file__).parent.absolute()
+        key_file = script_dir / "firebase_key.json"
+        
+        if not key_file.exists():
+            key_file = script_dir / "firebase_key.json.json"
+            
+        cred = credentials.Certificate(str(key_file))
+    
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()
