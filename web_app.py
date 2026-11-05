@@ -31,12 +31,12 @@ st.markdown("""
     div[data-testid="stVerticalBlock"] { gap: 0.5rem; }
 
     /* Party-Slot-Design für Links im aktiven Team */
-    [class*="st-key-teamslot_"] { background: #185FA5; border: 2px solid #0C447C; border-radius: 16px; padding: 10px 12px 12px 12px; }
+    [class*="st-key-teamslot_"] { background: #10263F; border: 1px solid #23476F; border-radius: 16px; padding: 6px 12px 12px 12px; }
     [class*="st-key-teamslot_"] [data-testid="stCheckbox"] p { color: #E6F1FB; }
-    .teamslot-route { color: #E6F1FB; font-weight: 600; padding-top: 6px; }
-    .teamslots { display: grid; gap: 8px; }
-    .teamslot { display: flex; gap: 10px; align-items: center; min-width: 0;
-                background: #E6F1FB; border-radius: 30px 10px 10px 30px; padding: 5px 10px 5px 5px; }
+    [class*="st-key-slot_"] { background: #E6F1FB; border-radius: 32px 10px 10px 32px; padding: 5px 8px 5px 5px; }
+    /* Streamlit zieht HTML-Blöcke unten um 1rem zusammen – hier ausgleichen, damit nichts überhängt */
+    .teamslot-route { color: #E6F1FB; font-weight: 600; margin-bottom: 1rem; }
+    .teamslot { display: flex; gap: 10px; align-items: center; min-width: 0; margin-bottom: 1rem; }
     .teamslot .ring { width: 54px; height: 54px; flex: 0 0 54px; border-radius: 50%; border: 3px solid #68A090;
                       background: #ffffff; display: flex; align-items: center; justify-content: center; overflow: hidden; }
     .teamslot .ring img { width: 60px; height: 60px; image-rendering: pixelated; }
@@ -44,7 +44,6 @@ st.markdown("""
     .teamslot .info { min-width: 0; }
     .teamslot .trainer { font-size: 12px; color: #185FA5; line-height: 1.2; }
     .teamslot .pname { font-weight: 600; color: #042C53; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    @media (max-width: 640px) { .teamslots { grid-template-columns: 1fr !important; } }
     </style>
 """, unsafe_allow_html=True)
 
@@ -586,34 +585,59 @@ def zeichne_zeile(eintrag, zeige_checkbox=False):
                     st.markdown(typ_badges(infos.get("typen") or ["Unbekannt"]), unsafe_allow_html=True)
 
 
+def spalten_mittig(spec):
+    """st.columns mit senkrecht zentriertem Inhalt (falls die Streamlit-Version das kann)."""
+    try:
+        return st.columns(spec, vertical_alignment="center")
+    except TypeError:
+        return st.columns(spec)
+
+
+def slot_html(spieler_name, pokemon_name, infos):
+    typen = infos.get("typen") or ["Unbekannt"]
+    ring_farbe = TYP_FARBEN.get(typen[0], "#68A090")
+    bild_pfad = infos.get("bild")
+    bild = f"<img src='{html.escape(bild_pfad)}' alt=''>" if bild_pfad else "<span>❓</span>"
+    return (f"<div class='teamslot'><div class='ring' style='border-color:{ring_farbe};'>{bild}</div>"
+            f"<div class='info'><div class='trainer'>{html.escape(spieler_name)}</div>"
+            f"<div class='pname'>{html.escape(pokemon_name)}</div>{typ_badges(typen)}</div></div>")
+
+
 def zeichne_teamslot(eintrag):
-    """Link im aktiven Team im Party-Slot-Design: blaue Zeile, darunter ein Slot pro Trainer.
-    Gleiche Buttons und Reihenfolge wie in der Listenansicht."""
+    """Link im aktiven Team im Party-Slot-Design: Kopfzeile mit Route + "Im Team",
+    darunter ein Slot pro Trainer. Bei bis zu 2 Trainern sitzen die Buttons im rechten Slot,
+    bei 3 Trainern kompakt in der Kopfzeile."""
     link_id = eintrag["id"]
     try:
         rahmen = st.container(key=f"teamslot_{link_id}")
     except TypeError:  # sehr alte Streamlit-Version: normale Listenzeile
         zeichne_zeile(eintrag, zeige_checkbox=True)
         return
-    with rahmen:
-        top_cols = st.columns([4, 2, 1, 1, 1, 1])
-        with top_cols[0]:
-            st.markdown(f"<div class='teamslot-route'>📍 {html.escape(eintrag.get('route', ''))}</div>", unsafe_allow_html=True)
-        zeichne_aktionen(eintrag, True, top_cols[1:])
+    pokes = pokemon_des_links(eintrag)
+    anzahl = max(2, min(3, max(len(pokes), einst.get("anzahl_spieler", 1))))
+    buttons_im_slot = anzahl <= 2
 
-        slots = []
-        for spieler_name, pokemon_name, infos in pokemon_des_links(eintrag):
-            typen = infos.get("typen") or ["Unbekannt"]
-            ring_farbe = TYP_FARBEN.get(typen[0], "#68A090")
-            bild_pfad = infos.get("bild")
-            bild = f"<img src='{html.escape(bild_pfad)}' alt=''>" if bild_pfad else "<span>❓</span>"
-            slots.append(
-                f"<div class='teamslot'><div class='ring' style='border-color:{ring_farbe};'>{bild}</div>"
-                f"<div class='info'><div class='trainer'>{html.escape(spieler_name)}</div>"
-                f"<div class='pname'>{html.escape(pokemon_name)}</div>{typ_badges(typen)}</div></div>")
-        spalten = max(2, min(3, max(len(slots), einst.get("anzahl_spieler", 1))))
-        st.markdown(f"<div class='teamslots' style='grid-template-columns: repeat({spalten}, minmax(0, 1fr));'>"
-                    + "".join(slots) + "</div>", unsafe_allow_html=True)
+    with rahmen:
+        if buttons_im_slot:
+            kopf = spalten_mittig([5, 2])
+        else:
+            kopf = spalten_mittig([4, 2, 1, 1, 1, 1])
+        with kopf[0]:
+            st.markdown(f"<div class='teamslot-route'>📍 {html.escape(eintrag.get('route', ''))}</div>", unsafe_allow_html=True)
+
+        aktions_spalten = list(kopf[1:])
+        for idx, spalte in enumerate(st.columns(anzahl)):
+            with spalte:
+                with st.container(key=f"slot_{link_id}_{idx}"):
+                    inhalt = slot_html(*pokes[idx]) if idx < len(pokes) else "<div class='teamslot'></div>"
+                    if buttons_im_slot and idx == anzahl - 1:
+                        innen = spalten_mittig([4, 1, 1, 1, 1])
+                        with innen[0]:
+                            st.markdown(inhalt, unsafe_allow_html=True)
+                        aktions_spalten = [kopf[1]] + list(innen[1:])
+                    else:
+                        st.markdown(inhalt, unsafe_allow_html=True)
+        zeichne_aktionen(eintrag, True, aktions_spalten)
 
 # ==========================================
 # 5. ÜBERSICHT & TABS ZEICHNEN
