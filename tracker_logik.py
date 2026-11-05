@@ -2,7 +2,7 @@ import firebase_admin
 
 # Bei jeder Änderung an dieser Datei erhöhen UND in web_app.py anpassen.
 # So erkennt die Web-App, wenn Streamlit noch eine alte Version im Speicher hat.
-MODUL_VERSION = 5
+MODUL_VERSION = 6
 from firebase_admin import credentials, firestore
 import requests
 import os
@@ -255,6 +255,11 @@ def link_hinzufuegen(run_id, route, n1, p1, n2, p2, n3, p3, status):
 
     try:
         db.collection("links").add(neuer_link)
+        # Run im Run-Verzeichnis sicherstellen (falls er z.B. nur über die Adresse geöffnet wurde)
+        try:
+            db.collection("runs").document(_run_doc_id(run_id)).set({"run_id": run_id}, merge=True)
+        except Exception as e:
+            print("Run-Verzeichnis konnte nicht aktualisiert werden:", e)
         return True, f"Erfolgreich gespeichert! {'(Static Bonus verwendet)' if is_static else ''}"
     except Exception as e:
         return False, f"Cloud-Fehler: {e}"
@@ -323,14 +328,29 @@ def schluessel(text):
     return re.sub(r"[^A-Za-z0-9]+", "_", text).strip("_")
 
 
+def _runs_einmalig_eintragen():
+    """Einmalige Umstellung: Jeder Run bekommt einen kleinen Eintrag in "runs".
+    Danach muss die Run-Liste nie wieder alle Links durchlesen (spart Firebase-Lesevorgänge)."""
+    if db.collection("meta").document("runs_verzeichnis").get().exists:
+        return
+    vorhandene = set()
+    for doc in db.collection("runs").stream():
+        r = doc.to_dict().get("run_id")
+        if r:
+            vorhandene.add(r)
+    for doc in db.collection("links").stream():
+        r = doc.to_dict().get("run_id")
+        if r and r not in vorhandene:
+            db.collection("runs").document(_run_doc_id(r)).set({"run_id": r}, merge=True)
+            vorhandene.add(r)
+    db.collection("meta").document("runs_verzeichnis").set({"erledigt": True})
+
+
 def lade_runs():
-    """Alle bekannten Run-Namen (aus Einträgen und gespeicherten Einstellungen)."""
+    """Alle Run-Namen – liest nur einen kleinen Eintrag pro Run, nicht alle Links."""
     namen = set()
     try:
-        for doc in db.collection("links").stream():
-            r = doc.to_dict().get("run_id")
-            if r:
-                namen.add(r)
+        _runs_einmalig_eintragen()
         for doc in db.collection("runs").stream():
             r = doc.to_dict().get("run_id")
             if r:
