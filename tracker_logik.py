@@ -2,13 +2,15 @@ import firebase_admin
 
 # Bei jeder Änderung an dieser Datei erhöhen UND in web_app.py anpassen.
 # So erkennt die Web-App, wenn Streamlit noch eine alte Version im Speicher hat.
-MODUL_VERSION = 2
+MODUL_VERSION = 3
 from firebase_admin import credentials, firestore
 import requests
 import os
 import re
 import streamlit as st
 import json
+import hashlib
+import hmac
 from pathlib import Path
 
 # ==========================================
@@ -284,7 +286,8 @@ def link_loeschen(doc_id):
 # ==========================================
 # Einstellungen pro Run (Spielernamen, gewähltes Spiel, besiegte Arenen) liegen
 # in einer eigenen Sammlung "runs". Die bestehenden "links" bleiben unverändert.
-STANDARD_EINSTELLUNGEN = {"spieler": ["", "", ""], "anzahl_spieler": 1, "spiel": None, "besiegt": {}}
+STANDARD_EINSTELLUNGEN = {"spieler": ["", "", ""], "anzahl_spieler": 1, "spiel": None, "besiegt": {},
+                          "pw_hash": None, "pw_salt": None}
 
 
 def _run_doc_id(run_id):
@@ -333,6 +336,49 @@ def lade_run_einstellungen(run_id):
     if not isinstance(einstellungen.get("besiegt"), dict):
         einstellungen["besiegt"] = {}
     return einstellungen
+
+
+# ---------- Passwortschutz pro Run ----------
+# Gespeichert wird nur ein Hash (nie das Passwort selbst). Nach der Eingabe bekommt
+# der Browser einen "Schlüssel" (abgeleitet vom Hash), der in der Adresse steht und
+# beim Neuladen erhalten bleibt. Ändert sich das Passwort, wird der alte Schlüssel ungültig.
+def _passwort_hash(passwort, salt):
+    return hashlib.pbkdf2_hmac("sha256", passwort.encode("utf-8"), bytes.fromhex(salt), 200_000).hex()
+
+
+def run_geschuetzt(einstellungen):
+    return bool(einstellungen.get("pw_hash"))
+
+
+def freigabe_schluessel(run_id, einstellungen):
+    """Schlüssel, der nach korrekter Passworteingabe in der Adresse gespeichert wird."""
+    if not run_geschuetzt(einstellungen):
+        return None
+    return hashlib.sha256(f"{run_id}|{einstellungen['pw_hash']}".encode("utf-8")).hexdigest()[:24]
+
+
+def pruefe_passwort(run_id, einstellungen, passwort):
+    """Gibt bei richtigem Passwort den Freigabe-Schlüssel zurück, sonst None."""
+    if not run_geschuetzt(einstellungen) or not passwort:
+        return None
+    versuch = _passwort_hash(passwort, einstellungen.get("pw_salt") or "")
+    if hmac.compare_digest(versuch, einstellungen["pw_hash"]):
+        return freigabe_schluessel(run_id, einstellungen)
+    return None
+
+
+def pruefe_schluessel(run_id, einstellungen, schluessel):
+    erwartet = freigabe_schluessel(run_id, einstellungen)
+    return bool(erwartet and schluessel and hmac.compare_digest(erwartet, str(schluessel)))
+
+
+def run_passwort_setzen(run_id, passwort):
+    """Setzt (oder ändert) das Passwort eines Runs. Gibt den neuen Freigabe-Schlüssel zurück."""
+    salt = os.urandom(16).hex()
+    pw_hash = _passwort_hash(passwort, salt)
+    if not speichere_run_einstellungen(run_id, pw_hash=pw_hash, pw_salt=salt):
+        return None
+    return freigabe_schluessel(run_id, {"pw_hash": pw_hash})
 
 
 def run_loeschen(run_id):

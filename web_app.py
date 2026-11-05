@@ -6,7 +6,7 @@ import importlib
 
 # Streamlit lädt nach einem Update manchmal nur web_app.py neu, aber nicht tracker_logik.py.
 # Passt die Version nicht, wird die Logik-Datei hier frisch geladen.
-ERWARTETE_LOGIK_VERSION = 2
+ERWARTETE_LOGIK_VERSION = 3
 if getattr(tracker_logik, "MODUL_VERSION", 0) != ERWARTETE_LOGIK_VERSION:
     tracker_logik = importlib.reload(tracker_logik)
 
@@ -80,14 +80,22 @@ auswahl = st.sidebar.selectbox("Run:", alle_runs + [NEUER_RUN], key="run_auswahl
 
 if auswahl == NEUER_RUN:
     neuer_name = st.sidebar.text_input("Name des neuen Runs:", key="neuer_run_name")
+    neues_pw = st.sidebar.text_input("Passwort (empfohlen):", type="password", key="neuer_run_pw",
+                                     help="Ohne Passwort kann jeder mit dem Link den Run bearbeiten und löschen. Ansehen können ihn immer alle.")
     if st.sidebar.button("Run anlegen", type="primary"):
         name = (neuer_name or "").strip()
         if not name:
             st.sidebar.warning("Bitte einen Namen eingeben.")
         elif name.lower() in [r.lower() for r in alle_runs]:
             st.sidebar.warning("Diesen Run gibt es schon – wähle ihn oben in der Liste aus.")
+        elif neues_pw and len(neues_pw) < 4:
+            st.sidebar.warning("Das Passwort braucht mindestens 4 Zeichen.")
         else:
             tracker_logik.speichere_run_einstellungen(name, anzahl_spieler=1)
+            if neues_pw:
+                schluessel = tracker_logik.run_passwort_setzen(name, neues_pw)
+                if schluessel:
+                    st.session_state.setdefault("freigaben", {})[name] = schluessel
             runs_laden.clear()
             st.session_state.run_wunsch = name
             st.rerun()
@@ -98,15 +106,75 @@ else:
     if st.query_params.get("run") != auswahl:
         st.query_params["run"] = auswahl
 
-# Einstellungen des Runs (Spielernamen, Spiel, besiegte Arenen) einmal laden
-if st.session_state.get("geladener_run") != aktueller_run:
-    st.session_state.einst = tracker_logik.lade_run_einstellungen(aktueller_run)
-    st.session_state.geladener_run = aktueller_run
+# Einstellungen des Runs (Spielernamen, Spiel, besiegte Arenen, Passwort) laden
+st.session_state.einst = tracker_logik.lade_run_einstellungen(aktueller_run)
+st.session_state.geladener_run = aktueller_run
 einst = st.session_state.einst
+
+# ---------- Passwortschutz: darf dieser Browser den Run bearbeiten? ----------
+freigaben = st.session_state.setdefault("freigaben", {})
+url_schluessel = st.query_params.get("schluessel")
+if url_schluessel and tracker_logik.pruefe_schluessel(aktueller_run, einst, url_schluessel):
+    freigaben[aktueller_run] = url_schluessel
+geschuetzt = tracker_logik.run_geschuetzt(einst)
+darf_bearbeiten = (not geschuetzt) or tracker_logik.pruefe_schluessel(aktueller_run, einst, freigaben.get(aktueller_run))
+gesperrt = not darf_bearbeiten
+
+if auswahl != NEUER_RUN:
+    # Schlüssel in der Adresse halten, damit die Freigabe ein Neuladen übersteht
+    gewuenscht = freigaben.get(aktueller_run) if (geschuetzt and darf_bearbeiten) else None
+    if st.query_params.get("schluessel") != gewuenscht:
+        if gewuenscht:
+            st.query_params["schluessel"] = gewuenscht
+        elif "schluessel" in st.query_params:
+            del st.query_params["schluessel"]
 
 daten = tracker_logik.lade_daten(aktueller_run)
 
 if auswahl != NEUER_RUN:
+    if geschuetzt and gesperrt:
+        st.sidebar.warning("🔒 Geschützter Run – nur ansehen.")
+        pw_eingabe = st.sidebar.text_input("Passwort zum Bearbeiten:", type="password", key=f"pw_eingabe_{aktueller_run}")
+        if st.sidebar.button("🔓 Entsperren", key=f"entsperren_{aktueller_run}"):
+            schluessel = tracker_logik.pruefe_passwort(aktueller_run, einst, pw_eingabe)
+            if schluessel:
+                freigaben[aktueller_run] = schluessel
+                st.query_params["schluessel"] = schluessel
+                melde("success", "🔓 Run entsperrt – du kannst jetzt bearbeiten.")
+                st.rerun()
+            else:
+                st.sidebar.error("Falsches Passwort.")
+    elif geschuetzt:
+        st.sidebar.success("🔓 Bearbeiten freigeschaltet")
+        if st.sidebar.button("🔒 Wieder sperren", key=f"sperren_{aktueller_run}"):
+            freigaben.pop(aktueller_run, None)
+            if "schluessel" in st.query_params:
+                del st.query_params["schluessel"]
+            st.rerun()
+    else:
+        st.sidebar.info("🔓 Kein Passwort – jeder mit dem Link kann bearbeiten.")
+
+    if not gesperrt:
+        with st.sidebar.expander("🔑 Passwort ändern" if geschuetzt else "🔑 Passwort festlegen"):
+            pw1 = st.text_input("Neues Passwort:", type="password", key=f"pw_neu1_{aktueller_run}")
+            pw2 = st.text_input("Passwort wiederholen:", type="password", key=f"pw_neu2_{aktueller_run}")
+            if st.button("Passwort speichern", key=f"pw_speichern_{aktueller_run}"):
+                if len(pw1 or "") < 4:
+                    st.error("Das Passwort braucht mindestens 4 Zeichen.")
+                elif pw1 != pw2:
+                    st.error("Die Passwörter stimmen nicht überein.")
+                else:
+                    schluessel = tracker_logik.run_passwort_setzen(aktueller_run, pw1)
+                    if schluessel:
+                        freigaben[aktueller_run] = schluessel
+                        st.query_params["schluessel"] = schluessel
+                        melde("success", "🔑 Passwort gespeichert. Dieser Browser bleibt freigeschaltet – "
+                                         "setz dir am besten ein Lesezeichen auf die aktuelle Adresse.")
+                        st.rerun()
+                    else:
+                        st.error("Passwort konnte nicht gespeichert werden. Bitte nochmal versuchen.")
+
+if auswahl != NEUER_RUN and not gesperrt:
     with st.sidebar.expander("🗑️ Run löschen"):
         st.markdown(f"Löscht **{aktueller_run}** komplett: alle **{len(daten)} {'Link' if len(daten) == 1 else 'Links'}** "
                     f"(auch Friedhof & Verpasst) und die gespeicherten Einstellungen. Andere Runs bleiben erhalten.")
@@ -243,7 +311,7 @@ def spiel_gewechselt(run, key):
     tracker_logik.speichere_run_einstellungen(run, spiel=st.session_state[key])
 
 
-gewaehlte_gen = st.sidebar.selectbox("Wähle dein Spiel:", spiele, key=spiel_key,
+gewaehlte_gen = st.sidebar.selectbox("Wähle dein Spiel:", spiele, key=spiel_key, disabled=gesperrt,
                                      on_change=spiel_gewechselt, args=(aktueller_run, spiel_key))
 
 spiel_schluessel = tracker_logik.schluessel(gewaehlte_gen)
@@ -279,7 +347,7 @@ def cap_umschalten(run, sk, idx, key):
 for idx, cap in enumerate(caps):
     if ist_cap(cap):
         key = f"cap_{aktueller_run}_{spiel_schluessel}_{idx}"
-        st.sidebar.checkbox(f"**{cap}**", value=idx in besiegt, key=key,
+        st.sidebar.checkbox(f"**{cap}**", value=idx in besiegt, key=key, disabled=gesperrt,
                             on_change=cap_umschalten, args=(aktueller_run, spiel_schluessel, idx, key))
     else:
         st.sidebar.markdown(f"*{cap}*")
@@ -293,11 +361,14 @@ st.caption(f"Aktueller Spielstand: **{aktueller_run}**{cap_hinweis}")
 
 formular_nr = st.session_state.setdefault("formular_nr", 0)
 
+if gesperrt:
+    st.info("🔒 Dieser Run ist geschützt. Ansehen geht, zum Eintragen und Bearbeiten links mit dem Passwort entsperren.")
+
 col1, col2 = st.columns([1, 1])
 with col1:
-    route_input = st.text_input("📍 Route", placeholder="z.B. Route 1", key=f"route_{formular_nr}")
+    route_input = st.text_input("📍 Route", placeholder="z.B. Route 1", key=f"route_{formular_nr}", disabled=gesperrt)
 with col2:
-    status_input = st.radio("Status:", ["Gefangen", "Verpasst"], horizontal=True)
+    status_input = st.radio("Status:", ["Gefangen", "Verpasst"], horizontal=True, disabled=gesperrt)
 
 anzahl_key = f"anzahl_{aktueller_run}"
 if anzahl_key not in st.session_state:
@@ -318,9 +389,9 @@ p_pokes = ["", "", ""]
 for i in range(anzahl_spieler):
     with spieler_cols[i]:
         name_key = f"n_{aktueller_run}_{i}"
-        p_names[i] = st.text_input(f"Name Spieler {i+1}", value=einst["spieler"][i], key=name_key,
+        p_names[i] = st.text_input(f"Name Spieler {i+1}", value=einst["spieler"][i], key=name_key, disabled=gesperrt,
                                    on_change=name_geaendert, args=(aktueller_run, i, name_key))
-        p_pokes[i] = st.selectbox("Pokémon", POKEMON_NAMEN, index=None,
+        p_pokes[i] = st.selectbox("Pokémon", POKEMON_NAMEN, index=None, disabled=gesperrt,
                                   placeholder="Tippen zum Suchen…", key=f"p_{i}_{formular_nr}") or ""
 
 
@@ -333,17 +404,17 @@ def spieleranzahl_setzen(neu):
 col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 3])
 with col_btn1:
     if anzahl_spieler < 3:
-        if st.button("➕ Spieler hinzufügen"):
+        if st.button("➕ Spieler hinzufügen", disabled=gesperrt):
             spieleranzahl_setzen(anzahl_spieler + 1)
             st.rerun()
 with col_btn2:
     if anzahl_spieler > 1:
-        if st.button("➖ Spieler entfernen"):
+        if st.button("➖ Spieler entfernen", disabled=gesperrt):
             spieleranzahl_setzen(anzahl_spieler - 1)
             st.rerun()
 
 with col_btn3:
-    if st.button("💾 Link speichern", type="primary"):
+    if st.button("💾 Link speichern", type="primary", disabled=gesperrt):
         if not route_input or not p_pokes[0]:
             st.warning("Bitte mindestens eine Route und ein Pokémon eingeben!")
         else:
@@ -389,7 +460,7 @@ def bearbeiten_formular(eintrag):
                 start = 0
             namen.append(st.text_input(f"Name Spieler {idx+1}", value=alt_n, key=f"en_{link_id}_{idx}"))
             pokes.append(st.selectbox("Pokémon", optionen, index=start, key=f"ep_{link_id}_{idx}"))
-        if st.form_submit_button("💾 Änderung speichern", type="primary"):
+        if st.form_submit_button("💾 Änderung speichern", type="primary", disabled=gesperrt):
             erfolg, nachricht = tracker_logik.link_bearbeiten(link_id, eintrag, neue_route, namen, pokes)
             melde("success" if erfolg else "error", nachricht)
             st.rerun()
@@ -413,25 +484,25 @@ def zeichne_zeile(eintrag, zeige_checkbox=False):
             if zeige_checkbox:
                 team_key = f"team_{link_id}"
                 st.session_state[team_key] = bool(eintrag.get("in_team", False))
-                st.checkbox("Im Team", key=team_key, on_change=team_umschalten, args=(aktueller_run, link_id, team_key))
+                st.checkbox("Im Team", key=team_key, disabled=gesperrt, on_change=team_umschalten, args=(aktueller_run, link_id, team_key))
         with top_cols[2]:
-            with st.popover("✏️", help="Bearbeiten (z.B. nach einer Entwicklung)"):
+            with st.popover("✏️", help="Bearbeiten (z.B. nach einer Entwicklung)", disabled=gesperrt):
                 bearbeiten_formular(eintrag)
         with top_cols[3]:
             if status == "aktiv":
-                if st.button("🏃", key=f"v_{link_id}", help="Verpasst"): tracker_logik.status_aendern(link_id, "verpasst"); st.rerun()
+                if st.button("🏃", key=f"v_{link_id}", help="Verpasst", disabled=gesperrt): tracker_logik.status_aendern(link_id, "verpasst"); st.rerun()
             else:
-                if st.button("♻️", key=f"a_{link_id}", help="Aktiv"): tracker_logik.status_aendern(link_id, "aktiv"); st.rerun()
+                if st.button("♻️", key=f"a_{link_id}", help="Aktiv", disabled=gesperrt): tracker_logik.status_aendern(link_id, "aktiv"); st.rerun()
         with top_cols[4]:
             if status != "friedhof":
-                if st.button("💀", key=f"f_{link_id}", help="Friedhof"): tracker_logik.status_aendern(link_id, "friedhof"); st.rerun()
+                if st.button("💀", key=f"f_{link_id}", help="Friedhof", disabled=gesperrt): tracker_logik.status_aendern(link_id, "friedhof"); st.rerun()
             else:
-                if st.button("🏃", key=f"v2_{link_id}", help="Verpasst"): tracker_logik.status_aendern(link_id, "verpasst"); st.rerun()
+                if st.button("🏃", key=f"v2_{link_id}", help="Verpasst", disabled=gesperrt): tracker_logik.status_aendern(link_id, "verpasst"); st.rerun()
         with top_cols[5]:
-            with st.popover("🗑️", help="Löschen"):
+            with st.popover("🗑️", help="Löschen", disabled=gesperrt):
                 st.markdown(f"**{eintrag.get('route', '')}** wirklich endgültig löschen?")
                 st.caption("Das kann nicht rückgängig gemacht werden.")
-                if st.button("Ja, löschen", key=f"d_{link_id}", type="primary"):
+                if st.button("Ja, löschen", key=f"d_{link_id}", type="primary", disabled=gesperrt):
                     tracker_logik.link_loeschen(link_id)
                     melde("success", f"Link '{eintrag.get('route', '')}' gelöscht.")
                     st.rerun()
