@@ -7,7 +7,7 @@ import html
 
 # Streamlit lädt nach einem Update manchmal nur web_app.py neu, aber nicht tracker_logik.py.
 # Passt die Version nicht, wird die Logik-Datei hier frisch geladen.
-ERWARTETE_LOGIK_VERSION = 7
+ERWARTETE_LOGIK_VERSION = 8
 if getattr(tracker_logik, "MODUL_VERSION", 0) != ERWARTETE_LOGIK_VERSION:
     tracker_logik = importlib.reload(tracker_logik)
 
@@ -393,6 +393,62 @@ with typ_spalte:
             f"border-radius:3px; font-size:12px; margin-right:4px;'>{t}</span>" for t in typen)
         st.markdown(f"<div style='font-size:13px;'><b>{html.escape(gesucht)}</b>&nbsp; {badges}</div>",
                     unsafe_allow_html=True)
+
+    # Fangchance-Rechner (Gen 3/4-Formel), nutzt das Pokémon aus der Suche darüber
+    with st.expander("🎯 Fangchance"):
+        if not gesucht:
+            st.caption("Oben ein Pokémon suchen, dann wird hier die Fangchance berechnet.")
+        else:
+            if "HeartGold" in gewaehlte_gen:
+                start_spiel = "HGSS"
+            elif gewaehlte_gen.startswith("Gen 4"):
+                start_spiel = "Gen 4 (DPPt)"
+            elif gewaehlte_gen.startswith("Gen 3"):
+                start_spiel = "Gen 3"
+            else:
+                start_spiel = "Gen 4 (DPPt)"
+            fc_spiel = st.selectbox("Spiel", tracker_logik.FANG_SPIELE,
+                                    index=tracker_logik.FANG_SPIELE.index(start_spiel), key="fc_spiel")
+            ball_schluessel = tracker_logik.baelle_fuer(fc_spiel)
+            fc_ball = st.selectbox("Ball", ball_schluessel, key=f"fc_ball_{fc_spiel}",
+                                   format_func=lambda k: tracker_logik.BAELLE[k][0])
+            fc_level = st.number_input("Level des wilden Pokémon", 1, 100, 10, key="fc_level")
+            fc_kp = st.slider("KP übrig (%)", 1, 100, 100, key="fc_kp")
+            fc_eins = st.checkbox("Genau 1 KP (Trugschlag)", key="fc_eins")
+            fc_status = st.selectbox("Status", list(tracker_logik.STATUS_FAKTOR10), key="fc_status")
+
+            # Nur die Zusatz-Angaben, die der gewählte Ball wirklich braucht
+            extras = {}
+            if fc_ball in ("timer", "flott"):
+                extras["runde"] = st.number_input("Kampfrunde", 1, 99, 1, key="fc_runde")
+            if fc_ball == "finster":
+                extras["nacht_hoehle"] = st.checkbox("Nachts oder in einer Höhle", key="fc_nacht")
+            if fc_ball == "tauch":
+                text = "Unter Wasser (Taucher)" if fc_spiel == "Gen 3" else "Beim Surfen oder Angeln"
+                extras["wasser"] = st.checkbox(text, key="fc_wasser")
+            if fc_ball == "wieder":
+                extras["schon_gefangen"] = st.checkbox("Schon mal gefangen (Pokédex)", key="fc_wieder")
+            if fc_ball == "koeder":
+                extras["angeln"] = st.checkbox("Beim Angeln", key="fc_angeln")
+            if fc_ball == "level":
+                extras["eigenes_level"] = st.number_input("Level deines Pokémon", 1, 100, 10, key="fc_eigen")
+            if fc_ball == "sympa":
+                extras["liebe"] = st.checkbox("Dein Pokémon: gleiche Art, anderes Geschlecht", key="fc_liebe")
+
+            chance, _ = tracker_logik.fangchance(gesucht, fc_ball, fc_kp, fc_status, int(fc_level), fc_spiel,
+                                                 eins_kp=fc_eins, **extras)
+            if chance is None:
+                st.caption("Für dieses Pokémon gibt es keine Fangrate.")
+            else:
+                prozent = f"{chance * 100:.1f}".replace(".", ",")
+                st.markdown(f"<div style='font-size:22px; font-weight:600;'>{prozent} %</div>", unsafe_allow_html=True)
+                wuerfe = tracker_logik.wuerfe_fuer(chance)
+                if chance >= 1:
+                    st.caption("Fängt garantiert.")
+                elif wuerfe:
+                    st.caption(f"Pro Wurf · für 90 % Sicherheit ca. {wuerfe} {'Wurf' if wuerfe == 1 else 'Würfe'}")
+            st.caption("Gen-3/4-Formel; KP mit Durchschnitts-IV geschätzt."
+                       + ("" if gewaehlte_gen.startswith(("Gen 3", "Gen 4")) else " In deinem Spiel (ab Gen 5) weichen die Werte etwas ab."))
 
 formular_nr = st.session_state.setdefault("formular_nr", 0)
 

@@ -2,7 +2,7 @@ import firebase_admin
 
 # Bei jeder Änderung an dieser Datei erhöhen UND in web_app.py anpassen.
 # So erkennt die Web-App, wenn Streamlit noch eine alte Version im Speicher hat.
-MODUL_VERSION = 7
+MODUL_VERSION = 8
 from firebase_admin import credentials, firestore
 import requests
 import os
@@ -11,6 +11,7 @@ import streamlit as st
 import json
 import hashlib
 import hmac
+import math
 from pathlib import Path
 
 # ==========================================
@@ -197,6 +198,103 @@ def hole_pokemon_infos(pokemon_name):
     if eintrag:
         return {"bild": SPRITE_URL.format(eintrag["id"]), "typen": eintrag["typen"] or ["Unbekannt"]}
     return _api_pokemon_infos(pokemon_name.strip())
+
+# ==========================================
+# 2b. FANGCHANCE-RECHNER (Gen 3/4-Formel)
+# ==========================================
+# Mechanik: X = ((3*KPmax - 2*KP) * (Fangrate * Ball)) / (3*KPmax) * Status, nach jedem Schritt abgerundet.
+# X >= 255 -> sicherer Fang. Sonst Y = 1048560 / sqrt(sqrt(16711680 / X)) und Chance = (Y/65536)^4.
+FANG_SPIELE = ["Gen 3", "Gen 4 (DPPt)", "HGSS"]
+
+# Schlüssel: (Anzeigename, in welchen Spielen verfügbar)
+BAELLE = {
+    "poke": ("Pokéball", FANG_SPIELE), "super": ("Superball", FANG_SPIELE), "hyper": ("Hyperball", FANG_SPIELE),
+    "meister": ("Meisterball", FANG_SPIELE), "safari": ("Safariball", FANG_SPIELE), "netz": ("Netzball", FANG_SPIELE),
+    "tauch": ("Tauchball", FANG_SPIELE), "nest": ("Nestball", FANG_SPIELE), "wieder": ("Wiederball", FANG_SPIELE),
+    "timer": ("Timerball", FANG_SPIELE), "luxus": ("Luxusball", FANG_SPIELE), "premier": ("Premierball", FANG_SPIELE),
+    "finster": ("Finsterball", FANG_SPIELE[1:]), "heil": ("Heilball", FANG_SPIELE[1:]), "flott": ("Flottball", FANG_SPIELE[1:]),
+    "jubel": ("Jubelball", FANG_SPIELE[1:]), "park": ("Parkball", FANG_SPIELE[1:]),
+    "turbo": ("Turboball", ["HGSS"]), "schwer": ("Schwerball", ["HGSS"]), "level": ("Levelball", ["HGSS"]),
+    "koeder": ("Köderball", ["HGSS"]), "mond": ("Mondball", ["HGSS"]), "freund": ("Freundesball", ["HGSS"]),
+    "sympa": ("Sympaball", ["HGSS"]), "turnier": ("Turnierball", ["HGSS"]),
+}
+STATUS_FAKTOR10 = {"Kein Status": 10, "Schlaf": 20, "Gefroren": 20, "Paralyse": 15, "Vergiftet": 15, "Verbrennung": 15}
+_MOND_FAMILIEN = ["Nidoran♀", "Nidoran♂", "Piepi", "Pummeluff", "Eneco"]
+
+
+def baelle_fuer(spiel):
+    return [k for k, (_, spiele) in BAELLE.items() if spiel in spiele]
+
+
+def fangchance(pokemon_name, ball, kp_prozent, status, ziel_level, spiel, eins_kp=False, runde=1,
+               nacht_hoehle=False, wasser=False, schon_gefangen=False, angeln=False, eigenes_level=None,
+               liebe=False, iv=15):
+    """Fangchance pro Wurf (0..1) nach Gen-3/4-Mechanik. KP-Maximum wird mit IV (Standard 15), ohne EVs geschätzt.
+    Gibt (chance, x_wert) zurück oder (None, None), wenn das Pokémon unbekannt ist."""
+    p = finde_pokemon(pokemon_name)
+    if not p or "fangrate" not in p:
+        return None, None
+    if ball in ("meister", "park"):
+        return 1.0, 255
+
+    # Bälle, die die Fangrate selbst verändern (HGSS-Aprikoko-Bälle)
+    c = p["fangrate"]
+    if ball == "turbo" and p.get("init", 0) >= 100:
+        c *= 4
+    elif ball == "schwer":
+        g = p.get("gewicht", 0)
+        c += 40 if g >= 409.6 else 30 if g >= 307.2 else 20 if g >= 204.8 else -20
+    elif ball == "level" and eigenes_level:
+        if eigenes_level // 4 > ziel_level:
+            c *= 8
+        elif eigenes_level // 2 > ziel_level:
+            c *= 4
+        elif eigenes_level > ziel_level:
+            c *= 2
+    elif ball == "sympa" and liebe:
+        c *= 8
+    elif ball == "koeder" and angeln:
+        c *= 3
+    elif ball == "mond" and any(p["name"].lower() in _familie_lokal(n) for n in _MOND_FAMILIEN):
+        c *= 4
+    c = max(1, min(255, c))
+
+    # Ball-Bonus in Zehnteln (1.5 -> 15), damit ganzzahlig wie im Spiel gerechnet wird
+    b10 = {"super": 15, "hyper": 20, "safari": 15, "turnier": 15}.get(ball, 10)
+    if ball == "netz" and any(t in ("Wasser", "Käfer") for t in p.get("typen", [])):
+        b10 = 30
+    elif ball == "nest":
+        b10 = max(10, 40 - ziel_level)
+    elif ball == "tauch" and wasser:
+        b10 = 35
+    elif ball == "wieder" and schon_gefangen:
+        b10 = 30
+    elif ball == "timer":
+        b10 = min(40, 10 + max(0, runde - 1))
+    elif ball == "flott" and runde == 1:
+        b10 = 40
+    elif ball == "finster" and nacht_hoehle:
+        b10 = 35
+
+    kp_max = ((2 * p["kp"] + iv) * ziel_level) // 100 + ziel_level + 10
+    kp = 1 if eins_kp else max(1, min(kp_max, round(kp_max * kp_prozent / 100)))
+
+    x = ((3 * kp_max - 2 * kp) * ((c * b10) // 10)) // (3 * kp_max)
+    x = (x * STATUS_FAKTOR10.get(status, 10)) // 10
+    x = max(1, x)
+    if x >= 255:
+        return 1.0, x
+    y = 1048560 // math.isqrt(math.isqrt(16711680 // x))
+    return min(1.0, (y / 65536) ** 4), x
+
+
+def wuerfe_fuer(chance, ziel=0.9):
+    """Wie viele Würfe man braucht, um mit z.B. 90 % Wahrscheinlichkeit zu fangen."""
+    if chance >= 1:
+        return 1
+    if chance <= 0:
+        return None
+    return math.ceil(math.log(1 - ziel) / math.log(1 - chance))
 
 # ==========================================
 # 3. DATENBANK LOGIK & PRÜFUNGEN
