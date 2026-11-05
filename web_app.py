@@ -7,7 +7,7 @@ import html
 
 # Streamlit lädt nach einem Update manchmal nur web_app.py neu, aber nicht tracker_logik.py.
 # Passt die Version nicht, wird die Logik-Datei hier frisch geladen.
-ERWARTETE_LOGIK_VERSION = 8
+ERWARTETE_LOGIK_VERSION = 9
 if getattr(tracker_logik, "MODUL_VERSION", 0) != ERWARTETE_LOGIK_VERSION:
     tracker_logik = importlib.reload(tracker_logik)
 
@@ -394,7 +394,7 @@ with typ_spalte:
         st.markdown(f"<div style='font-size:13px;'><b>{html.escape(gesucht)}</b>&nbsp; {badges}</div>",
                     unsafe_allow_html=True)
 
-    # Fangchance-Rechner (Gen 3/4-Formel), nutzt das Pokémon aus der Suche darüber
+    # Fangchance-Rechner (Gen 1–5), nutzt das Pokémon aus der Suche darüber
     with st.expander("🎯 Fangchance"):
         if not gesucht:
             st.caption("Oben ein Pokémon suchen, dann wird hier die Fangchance berechnet.")
@@ -403,10 +403,10 @@ with typ_spalte:
                 start_spiel = "HGSS"
             elif gewaehlte_gen.startswith("Gen 4"):
                 start_spiel = "Gen 4 (DPPt)"
-            elif gewaehlte_gen.startswith("Gen 3"):
-                start_spiel = "Gen 3"
+            elif gewaehlte_gen[:5] in ("Gen 1", "Gen 2", "Gen 3", "Gen 5"):
+                start_spiel = gewaehlte_gen[:5]
             else:
-                start_spiel = "Gen 4 (DPPt)"
+                start_spiel = "Gen 5"
             fc_spiel = st.selectbox("Spiel", tracker_logik.FANG_SPIELE,
                                     index=tracker_logik.FANG_SPIELE.index(start_spiel), key="fc_spiel")
             ball_schluessel = tracker_logik.baelle_fuer(fc_spiel)
@@ -415,7 +415,9 @@ with typ_spalte:
             fc_level = st.number_input("Level des wilden Pokémon", 1, 100, 10, key="fc_level")
             fc_kp = st.slider("KP übrig (%)", 1, 100, 100, key="fc_kp")
             fc_eins = st.checkbox("Genau 1 KP (Trugschlag)", key="fc_eins")
-            fc_status = st.selectbox("Status", list(tracker_logik.STATUS_FAKTOR10), key="fc_status")
+            fc_status = st.selectbox("Status", tracker_logik.STATUS_LISTE, key="fc_status")
+            if fc_spiel == "Gen 2" and fc_status in ("Paralyse", "Vergiftet", "Verbrennung"):
+                st.caption("In Gen 2 bringt dieser Status nichts (Spiel-Bug) – nur Schlaf und Gefroren helfen.")
 
             # Nur die Zusatz-Angaben, die der gewählte Ball wirklich braucht
             extras = {}
@@ -433,7 +435,20 @@ with typ_spalte:
             if fc_ball == "level":
                 extras["eigenes_level"] = st.number_input("Level deines Pokémon", 1, 100, 10, key="fc_eigen")
             if fc_ball == "sympa":
-                extras["liebe"] = st.checkbox("Dein Pokémon: gleiche Art, anderes Geschlecht", key="fc_liebe")
+                text = ("Dein Pokémon: gleiche Art, gleiches Geschlecht (Gen-2-Bug)" if fc_spiel == "Gen 2"
+                        else "Dein Pokémon: gleiche Art, anderes Geschlecht")
+                extras["liebe"] = st.checkbox(text, key="fc_liebe")
+            if fc_spiel == "Gen 2" and fc_ball == "mond":
+                st.caption("Der Mondball hat in Gen 2 durch einen Bug keine Wirkung.")
+            if fc_spiel == "Gen 2" and fc_ball == "turbo":
+                st.caption("Der Turboball wirkt in Gen 2 nur bei Sleima, Tangela und Magnetilo (Bug).")
+            if fc_spiel == "Gen 5":
+                extras["dichtes_gras"] = st.checkbox("Im dichten Gras", key="fc_gras")
+                extras["pokedex"] = st.number_input("Gefangene Arten im Pokédex", 0, 649, 100, key="fc_dex",
+                                                    help="Beeinflusst kritische Fänge und den Abzug im dichten Gras.")
+                kraft = st.selectbox("Fangkraft (Kontaktclub)", ["Keine", "↑ (+10 %)", "↑↑ (+20 %)", "↑↑↑ / S / MAX (+30 %)"],
+                                     key="fc_kraft")
+                extras["fangkraft"] = ["Keine", "↑ (+10 %)", "↑↑ (+20 %)", "↑↑↑ / S / MAX (+30 %)"].index(kraft)
 
             chance, _ = tracker_logik.fangchance(gesucht, fc_ball, fc_kp, fc_status, int(fc_level), fc_spiel,
                                                  eins_kp=fc_eins, **extras)
@@ -447,8 +462,10 @@ with typ_spalte:
                     st.caption("Fängt garantiert.")
                 elif wuerfe:
                     st.caption(f"Pro Wurf · für 90 % Sicherheit ca. {wuerfe} {'Wurf' if wuerfe == 1 else 'Würfe'}")
-            st.caption("Gen-3/4-Formel; KP mit Durchschnitts-IV geschätzt."
-                       + ("" if gewaehlte_gen.startswith(("Gen 3", "Gen 4")) else " In deinem Spiel (ab Gen 5) weichen die Werte etwas ab."))
+            hinweis = f"Formel von {fc_spiel}; KP mit durchschnittlichen IVs/DVs geschätzt."
+            if not gewaehlte_gen.startswith(("Gen 1", "Gen 2", "Gen 3", "Gen 4", "Gen 5")):
+                hinweis += " Dein Spiel (ab Gen 6) rechnet etwas anders – Werte sind nur ein Anhaltspunkt."
+            st.caption(hinweis)
 
 formular_nr = st.session_state.setdefault("formular_nr", 0)
 

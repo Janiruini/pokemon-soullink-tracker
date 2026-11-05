@@ -2,7 +2,7 @@ import firebase_admin
 
 # Bei jeder Änderung an dieser Datei erhöhen UND in web_app.py anpassen.
 # So erkennt die Web-App, wenn Streamlit noch eine alte Version im Speicher hat.
-MODUL_VERSION = 8
+MODUL_VERSION = 9
 from firebase_admin import credentials, firestore
 import requests
 import os
@@ -200,44 +200,106 @@ def hole_pokemon_infos(pokemon_name):
     return _api_pokemon_infos(pokemon_name.strip())
 
 # ==========================================
-# 2b. FANGCHANCE-RECHNER (Gen 3/4-Formel)
+# 2b. FANGCHANCE-RECHNER (Gen 1–5)
 # ==========================================
-# Mechanik: X = ((3*KPmax - 2*KP) * (Fangrate * Ball)) / (3*KPmax) * Status, nach jedem Schritt abgerundet.
-# X >= 255 -> sicherer Fang. Sonst Y = 1048560 / sqrt(sqrt(16711680 / X)) und Chance = (Y/65536)^4.
-FANG_SPIELE = ["Gen 3", "Gen 4 (DPPt)", "HGSS"]
+# Jede Generation hat ihre eigene Fangmechanik (siehe _fang_gen1, _fang_gen2, _fang_gen34, _fang_gen5).
+# Grundlage: die Mechanik-Beschreibungen auf dragonflycave.com (Gen I, II, III/IV, V).
+FANG_SPIELE = ["Gen 1", "Gen 2", "Gen 3", "Gen 4 (DPPt)", "HGSS", "Gen 5"]
+_G34 = ["Gen 3", "Gen 4 (DPPt)", "HGSS"]
 
 # Schlüssel: (Anzeigename, in welchen Spielen verfügbar)
 BAELLE = {
     "poke": ("Pokéball", FANG_SPIELE), "super": ("Superball", FANG_SPIELE), "hyper": ("Hyperball", FANG_SPIELE),
-    "meister": ("Meisterball", FANG_SPIELE), "safari": ("Safariball", FANG_SPIELE), "netz": ("Netzball", FANG_SPIELE),
-    "tauch": ("Tauchball", FANG_SPIELE), "nest": ("Nestball", FANG_SPIELE), "wieder": ("Wiederball", FANG_SPIELE),
-    "timer": ("Timerball", FANG_SPIELE), "luxus": ("Luxusball", FANG_SPIELE), "premier": ("Premierball", FANG_SPIELE),
-    "finster": ("Finsterball", FANG_SPIELE[1:]), "heil": ("Heilball", FANG_SPIELE[1:]), "flott": ("Flottball", FANG_SPIELE[1:]),
-    "jubel": ("Jubelball", FANG_SPIELE[1:]), "park": ("Parkball", FANG_SPIELE[1:]),
-    "turbo": ("Turboball", ["HGSS"]), "schwer": ("Schwerball", ["HGSS"]), "level": ("Levelball", ["HGSS"]),
-    "koeder": ("Köderball", ["HGSS"]), "mond": ("Mondball", ["HGSS"]), "freund": ("Freundesball", ["HGSS"]),
-    "sympa": ("Sympaball", ["HGSS"]), "turnier": ("Turnierball", ["HGSS"]),
+    "meister": ("Meisterball", FANG_SPIELE), "safari": ("Safariball", ["Gen 1"] + _G34),
+    "netz": ("Netzball", _G34 + ["Gen 5"]), "tauch": ("Tauchball", _G34 + ["Gen 5"]), "nest": ("Nestball", _G34 + ["Gen 5"]),
+    "wieder": ("Wiederball", _G34 + ["Gen 5"]), "timer": ("Timerball", _G34 + ["Gen 5"]),
+    "luxus": ("Luxusball", _G34 + ["Gen 5"]), "premier": ("Premierball", _G34 + ["Gen 5"]),
+    "finster": ("Finsterball", ["Gen 4 (DPPt)", "HGSS", "Gen 5"]), "heil": ("Heilball", ["Gen 4 (DPPt)", "HGSS", "Gen 5"]),
+    "flott": ("Flottball", ["Gen 4 (DPPt)", "HGSS", "Gen 5"]), "jubel": ("Jubelball", ["Gen 4 (DPPt)", "HGSS", "Gen 5"]),
+    "park": ("Parkball", ["Gen 4 (DPPt)", "HGSS"]), "park2": ("Parkball (Käferturnier)", ["Gen 2"]),
+    "turbo": ("Turboball", ["Gen 2", "HGSS"]), "schwer": ("Schwerball", ["Gen 2", "HGSS"]), "level": ("Levelball", ["Gen 2", "HGSS"]),
+    "koeder": ("Köderball", ["Gen 2", "HGSS"]), "mond": ("Mondball", ["Gen 2", "HGSS"]), "freund": ("Freundesball", ["Gen 2", "HGSS"]),
+    "sympa": ("Sympaball", ["Gen 2", "HGSS"]), "turnier": ("Turnierball", ["HGSS"]), "traum": ("Traumball", ["Gen 5"]),
 }
+STATUS_LISTE = ["Kein Status", "Schlaf", "Gefroren", "Paralyse", "Vergiftet", "Verbrennung"]
 STATUS_FAKTOR10 = {"Kein Status": 10, "Schlaf": 20, "Gefroren": 20, "Paralyse": 15, "Vergiftet": 15, "Verbrennung": 15}
 _MOND_FAMILIEN = ["Nidoran♀", "Nidoran♂", "Piepi", "Pummeluff", "Eneco"]
+_TURBO_GEN2 = ["sleima", "tangela", "magnetilo"]  # Gen-2-Bug: Turboball wirkt nur bei diesen drei
 
 
 def baelle_fuer(spiel):
     return [k for k, (_, spiele) in BAELLE.items() if spiel in spiele]
 
 
-def fangchance(pokemon_name, ball, kp_prozent, status, ziel_level, spiel, eins_kp=False, runde=1,
-               nacht_hoehle=False, wasser=False, schon_gefangen=False, angeln=False, eigenes_level=None,
-               liebe=False, iv=15):
-    """Fangchance pro Wurf (0..1) nach Gen-3/4-Mechanik. KP-Maximum wird mit IV (Standard 15), ohne EVs geschätzt.
-    Gibt (chance, x_wert) zurück oder (None, None), wenn das Pokémon unbekannt ist."""
-    p = finde_pokemon(pokemon_name)
-    if not p or "fangrate" not in p:
-        return None, None
-    if ball in ("meister", "park"):
-        return 1.0, 255
+def _kp_max_gen12(basis_kp, level, dv=8):
+    """KP in Gen 1/2 (mit DV statt IV, ohne Stat-Exp)."""
+    return ((basis_kp + dv) * 2 * level) // 100 + level + 10
 
-    # Bälle, die die Fangrate selbst verändern (HGSS-Aprikoko-Bälle)
+
+def _kp_max_ab_gen3(basis_kp, level, iv=15):
+    return ((2 * basis_kp + iv) * level) // 100 + level + 10
+
+
+def _kp_aktuell(kp_max, kp_prozent, eins_kp):
+    return 1 if eins_kp else max(1, min(kp_max, round(kp_max * kp_prozent / 100)))
+
+
+def _fang_gen1(p, ball, kp_prozent, status, ziel_level, eins_kp):
+    # Zufallsbereich je Ball, Status-Wert S, KP-Faktor F; geschlossene Formel der Wahrscheinlichkeit
+    bereich = {"super": 201, "hyper": 151, "safari": 151}.get(ball, 256)
+    s = 25 if status in ("Schlaf", "Gefroren") else 12 if status != "Kein Status" else 0
+    m = _kp_max_gen12(p["kp"], ziel_level)
+    h = _kp_aktuell(m, kp_prozent, eins_kp)
+    f = (m * 255) // (8 if ball == "super" else 12)
+    f = min(255, f // max(1, h // 4))
+    c = p["fangrate"]
+    chance = (s + min(c + 1, bereich - s) * (f + 1) / 256) / bereich
+    return min(1.0, chance), f
+
+
+def _fang_gen2(p, ball, kp_prozent, status, ziel_level, eins_kp, angeln, eigenes_level, liebe):
+    r = p["fangrate"]
+    name = p["name"].lower()
+    if ball == "super" or ball == "park2":
+        c = (r * 15) // 10
+    elif ball == "hyper":
+        c = r * 2
+    elif ball == "turbo":
+        c = r * 4 if name in _TURBO_GEN2 else r
+    elif ball == "schwer":
+        g = p.get("gewicht", 0)
+        c = r + (40 if g >= 409.6 else 30 if g >= 307.2 else 20 if g >= 204.8 else 0 if g >= 102.4 else -20)
+    elif ball == "sympa":
+        c = r * 8 if liebe else r   # Gen-2-Bug: wirkt bei GLEICHEM Geschlecht
+    elif ball == "koeder":
+        c = r * 3 if angeln else r
+    else:                            # Pokéball, Freundesball, Mondball (Bug: wirkt nicht)
+        c = r
+    if ball == "level":
+        c = r
+        if eigenes_level:
+            if eigenes_level // 4 > ziel_level:
+                c = r * 8
+            elif eigenes_level // 2 > ziel_level:
+                c = r * 4
+            elif eigenes_level > ziel_level:
+                c = r * 2
+        x = max(1, min(255, c))     # Levelball überspringt die KP-Rechnung
+        return (x + 1) / 256, x
+    c = max(1, min(255, c))
+    m = _kp_max_gen12(p["kp"], ziel_level)
+    h = _kp_aktuell(m, kp_prozent, eins_kp)
+    a, b = 3 * m, 2 * h
+    if a > 255:                      # Spiel teilt beide durch 4, damit es in 8 Bit passt
+        a, b = a // 4, b // 4
+    x = max(((a - b) * c) // a, 1) + (10 if status in ("Schlaf", "Gefroren") else 0)
+    x = min(255, x)
+    return (x + 1) / 256, x
+
+
+def _fang_gen34(p, ball, kp_prozent, status, ziel_level, eins_kp, runde, nacht_hoehle, wasser,
+                schon_gefangen, angeln, eigenes_level, liebe, iv):
+    # X = ((3*KPmax - 2*KP) * (Fangrate * Ball)) / (3*KPmax) * Status, nach jedem Schritt abgerundet.
     c = p["fangrate"]
     if ball == "turbo" and p.get("init", 0) >= 100:
         c *= 4
@@ -259,7 +321,6 @@ def fangchance(pokemon_name, ball, kp_prozent, status, ziel_level, spiel, eins_k
         c *= 4
     c = max(1, min(255, c))
 
-    # Ball-Bonus in Zehnteln (1.5 -> 15), damit ganzzahlig wie im Spiel gerechnet wird
     b10 = {"super": 15, "hyper": 20, "safari": 15, "turnier": 15}.get(ball, 10)
     if ball == "netz" and any(t in ("Wasser", "Käfer") for t in p.get("typen", [])):
         b10 = 30
@@ -276,9 +337,8 @@ def fangchance(pokemon_name, ball, kp_prozent, status, ziel_level, spiel, eins_k
     elif ball == "finster" and nacht_hoehle:
         b10 = 35
 
-    kp_max = ((2 * p["kp"] + iv) * ziel_level) // 100 + ziel_level + 10
-    kp = 1 if eins_kp else max(1, min(kp_max, round(kp_max * kp_prozent / 100)))
-
+    kp_max = _kp_max_ab_gen3(p["kp"], ziel_level, iv)
+    kp = _kp_aktuell(kp_max, kp_prozent, eins_kp)
     x = ((3 * kp_max - 2 * kp) * ((c * b10) // 10)) // (3 * kp_max)
     x = (x * STATUS_FAKTOR10.get(status, 10)) // 10
     x = max(1, x)
@@ -286,6 +346,77 @@ def fangchance(pokemon_name, ball, kp_prozent, status, ziel_level, spiel, eins_k
         return 1.0, x
     y = 1048560 // math.isqrt(math.isqrt(16711680 // x))
     return min(1.0, (y / 65536) ** 4), x
+
+
+def _runter(x):   # Gen 5 rechnet in 1/4096-Schritten
+    return math.floor(x * 4096) / 4096
+
+
+def _runden(x):
+    return math.floor(x * 4096 + 0.5) / 4096
+
+
+def _fang_gen5(p, ball, kp_prozent, status, ziel_level, eins_kp, runde, nacht_hoehle, wasser,
+               schon_gefangen, dichtes_gras, pokedex, fangkraft, iv):
+    c = p["fangrate"]
+    b = {"super": 1.5, "hyper": 2}.get(ball, 1)
+    if ball == "netz" and any(t in ("Wasser", "Käfer") for t in p.get("typen", [])):
+        b = 3
+    elif ball == "nest":
+        b = max(1, min(4, (41 - ziel_level) / 10))
+    elif ball == "tauch" and wasser:
+        b = 3.5
+    elif ball == "wieder" and schon_gefangen:
+        b = 3
+    elif ball == "timer":
+        b = min(4, 1 + max(0, runde - 1) * 1229 / 4096)
+    elif ball == "flott" and runde == 1:
+        b = 5
+    elif ball == "finster" and nacht_hoehle:
+        b = 3.5
+
+    if dichtes_gras:
+        g = (1 if pokedex > 600 else 3686 / 4096 if pokedex > 450 else 3277 / 4096 if pokedex > 300
+             else 2867 / 4096 if pokedex > 150 else 0.5 if pokedex > 30 else 1229 / 4096)
+    else:
+        g = 1
+    s = 2.5 if status in ("Schlaf", "Gefroren") else 1.5 if status != "Kein Status" else 1
+    e = {0: 100, 1: 110, 2: 120, 3: 130}.get(fangkraft, 100)
+
+    m = _kp_max_ab_gen3(p["kp"], ziel_level, iv)
+    h = _kp_aktuell(m, kp_prozent, eins_kp)
+    x = _runter(_runden(_runter(_runden(_runden((3 * m - 2 * h) * g) * c * b) / (3 * m)) * s) * e / 100)
+    if x >= 255:
+        return 1.0, x
+    if x <= 0:
+        return 0.0, x
+    y = math.floor(65536 / math.sqrt(math.sqrt(255 / x))) / 65536
+    pk = (2.5 if pokedex > 600 else 2 if pokedex > 450 else 1.5 if pokedex > 300
+          else 1 if pokedex > 150 else 0.5 if pokedex > 30 else 0)
+    kritisch = math.floor(min(255, x) * pk / 6) / 256   # kritischer Fang: nur eine Schüttel-Prüfung
+    return min(1.0, kritisch * y + (1 - kritisch) * y ** 3), x
+
+
+def fangchance(pokemon_name, ball, kp_prozent, status, ziel_level, spiel, eins_kp=False, runde=1,
+               nacht_hoehle=False, wasser=False, schon_gefangen=False, angeln=False, eigenes_level=None,
+               liebe=False, dichtes_gras=False, pokedex=0, fangkraft=0, iv=15):
+    """Fangchance pro Wurf (0..1) nach der Mechanik der gewählten Generation.
+    KP werden mit durchschnittlichen IVs/DVs geschätzt. Gibt (chance, x_wert) zurück,
+    oder (None, None), wenn das Pokémon unbekannt ist."""
+    p = finde_pokemon(pokemon_name)
+    if not p or "fangrate" not in p:
+        return None, None
+    if ball == "meister" or (ball == "park" and spiel in _G34):
+        return 1.0, 255
+    if spiel == "Gen 1":
+        return _fang_gen1(p, ball, kp_prozent, status, ziel_level, eins_kp)
+    if spiel == "Gen 2":
+        return _fang_gen2(p, ball, kp_prozent, status, ziel_level, eins_kp, angeln, eigenes_level, liebe)
+    if spiel == "Gen 5":
+        return _fang_gen5(p, ball, kp_prozent, status, ziel_level, eins_kp, runde, nacht_hoehle, wasser,
+                          schon_gefangen, dichtes_gras, pokedex, fangkraft, iv)
+    return _fang_gen34(p, ball, kp_prozent, status, ziel_level, eins_kp, runde, nacht_hoehle, wasser,
+                       schon_gefangen, angeln, eigenes_level, liebe, iv)
 
 
 def wuerfe_fuer(chance, ziel=0.9):
