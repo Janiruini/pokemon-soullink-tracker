@@ -2,6 +2,13 @@ import streamlit as st
 import tracker_logik
 import os
 import re
+import importlib
+
+# Streamlit lädt nach einem Update manchmal nur web_app.py neu, aber nicht tracker_logik.py.
+# Passt die Version nicht, wird die Logik-Datei hier frisch geladen.
+ERWARTETE_LOGIK_VERSION = 2
+if getattr(tracker_logik, "MODUL_VERSION", 0) != ERWARTETE_LOGIK_VERSION:
+    tracker_logik = importlib.reload(tracker_logik)
 
 # ==========================================
 # 1. SEITEN-KONFIGURATION & STATUS

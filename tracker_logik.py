@@ -1,4 +1,8 @@
 import firebase_admin
+
+# Bei jeder Änderung an dieser Datei erhöhen UND in web_app.py anpassen.
+# So erkennt die Web-App, wenn Streamlit noch eine alte Version im Speicher hat.
+MODUL_VERSION = 2
 from firebase_admin import credentials, firestore
 import requests
 import os
