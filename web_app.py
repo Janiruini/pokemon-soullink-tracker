@@ -6,7 +6,7 @@ import importlib
 
 # Streamlit lädt nach einem Update manchmal nur web_app.py neu, aber nicht tracker_logik.py.
 # Passt die Version nicht, wird die Logik-Datei hier frisch geladen.
-ERWARTETE_LOGIK_VERSION = 3
+ERWARTETE_LOGIK_VERSION = 4
 if getattr(tracker_logik, "MODUL_VERSION", 0) != ERWARTETE_LOGIK_VERSION:
     tracker_logik = importlib.reload(tracker_logik)
 
@@ -30,6 +30,26 @@ st.markdown("""
     div[data-testid="stVerticalBlock"] { gap: 0.5rem; }
     </style>
 """, unsafe_allow_html=True)
+
+
+LIVE_INTERVALL = "4s"  # wie oft der Listenbereich auf Änderungen schaut (ohne Datenbank-Abfrage)
+
+
+@st.cache_resource(show_spinner=False)
+def beobachter_fuer(run_id):
+    """Ein gemeinsamer Firebase-Listener pro Run für alle Besucher."""
+    return tracker_logik.RunBeobachter(run_id)
+
+
+def live_fragment(fn):
+    """Lässt eine Funktion alle paar Sekunden neu zeichnen (falls Streamlit das kann)."""
+    fragment = getattr(st, "fragment", None)
+    if fragment is None:
+        return fn
+    try:
+        return fragment(run_every=LIVE_INTERVALL)(fn)
+    except TypeError:
+        return fn
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -129,6 +149,12 @@ if auswahl != NEUER_RUN:
         elif "schluessel" in st.query_params:
             del st.query_params["schluessel"]
 
+try:
+    beobachter = beobachter_fuer(aktueller_run)
+except Exception as e:
+    print("Live-Aktualisierung nicht verfügbar:", e)
+    beobachter = None
+live_version = beobachter.version if beobachter else 0  # vor dem Laden merken, damit keine Änderung verloren geht
 daten = tracker_logik.lade_daten(aktueller_run)
 
 if auswahl != NEUER_RUN:
@@ -381,6 +407,19 @@ def name_geaendert(run, i, key):
     tracker_logik.speichere_run_einstellungen(run, spieler=list(einst["spieler"]))
 
 
+vergeben = tracker_logik.vergebene_pokemon(daten)
+
+
+def pokemon_label(name):
+    """Markiert in der Auswahl Pokémon, die wegen der Dupes Clause schon vergeben sind."""
+    grund = vergeben.get(name.lower())
+    if not grund:
+        return name
+    if grund.lower() == name.lower():
+        return f"{name}  ⛔ schon gehabt"
+    return f"{name}  ⛔ Reihe von {grund}"
+
+
 spieler_cols = st.columns(3)
 
 p_names = ["", "", ""]
@@ -392,7 +431,8 @@ for i in range(anzahl_spieler):
         p_names[i] = st.text_input(f"Name Spieler {i+1}", value=einst["spieler"][i], key=name_key, disabled=gesperrt,
                                    on_change=name_geaendert, args=(aktueller_run, i, name_key))
         p_pokes[i] = st.selectbox("Pokémon", POKEMON_NAMEN, index=None, disabled=gesperrt,
-                                  placeholder="Tippen zum Suchen…", key=f"p_{i}_{formular_nr}") or ""
+                                  format_func=pokemon_label, placeholder="Tippen zum Suchen…",
+                                  key=f"p_{i}_{formular_nr}") or ""
 
 
 def spieleranzahl_setzen(neu):
@@ -470,106 +510,160 @@ def team_umschalten(run, link_id, key):
     erfolg, msg = tracker_logik.team_status_aendern(run, link_id, st.session_state[key])
     if not erfolg:
         st.session_state.team_fehler = msg
+    st.session_state.live_neu_laden = True  # Liste sofort mit dem neuen Team-Stand zeichnen
+
+
+def zeichne_aktionen(eintrag, zeige_checkbox, spalten):
+    """Die Buttons eines Links: Team, Bearbeiten, Verpasst/Aktiv, Friedhof, Löschen."""
+    link_id = eintrag["id"]
+    status = eintrag.get("status", "aktiv")
+    with spalten[0]:
+        if zeige_checkbox:
+            team_key = f"team_{link_id}"
+            st.session_state[team_key] = bool(eintrag.get("in_team", False))
+            st.checkbox("Im Team", key=team_key, disabled=gesperrt, on_change=team_umschalten, args=(aktueller_run, link_id, team_key))
+    with spalten[1]:
+        with st.popover("✏️", help="Bearbeiten (z.B. nach einer Entwicklung)", disabled=gesperrt):
+            bearbeiten_formular(eintrag)
+    with spalten[2]:
+        if status == "aktiv":
+            if st.button("🏃", key=f"v_{link_id}", help="Verpasst", disabled=gesperrt): tracker_logik.status_aendern(link_id, "verpasst"); st.rerun()
+        else:
+            if st.button("♻️", key=f"a_{link_id}", help="Aktiv", disabled=gesperrt): tracker_logik.status_aendern(link_id, "aktiv"); st.rerun()
+    with spalten[3]:
+        if status != "friedhof":
+            if st.button("💀", key=f"f_{link_id}", help="Friedhof", disabled=gesperrt): tracker_logik.status_aendern(link_id, "friedhof"); st.rerun()
+        else:
+            if st.button("🏃", key=f"v2_{link_id}", help="Verpasst", disabled=gesperrt): tracker_logik.status_aendern(link_id, "verpasst"); st.rerun()
+    with spalten[4]:
+        with st.popover("🗑️", help="Löschen", disabled=gesperrt):
+            st.markdown(f"**{eintrag.get('route', '')}** wirklich endgültig löschen?")
+            st.caption("Das kann nicht rückgängig gemacht werden.")
+            if st.button("Ja, löschen", key=f"d_{link_id}", type="primary", disabled=gesperrt):
+                tracker_logik.link_loeschen(link_id)
+                melde("success", f"Link '{eintrag.get('route', '')}' gelöscht.")
+                st.rerun()
+
+
+def typ_badges(typen):
+    html = ""
+    for typ in typen:
+        farbe = TYP_FARBEN.get(typ, "#68A090")
+        html += f"<span style='background-color:{farbe}; color:white; padding:1px 5px; border-radius:3px; font-size:11px; margin:0 2px;'>{typ}</span>"
+    return html
+
+
+def pokemon_des_links(eintrag):
+    """[(spieler, pokemon, infos), ...] für alle belegten Plätze eines Links."""
+    liste = []
+    for idx, (p_key, n_key, i_key) in enumerate([('p1', 'n1', 'i1'), ('p2', 'n2', 'i2'), ('p3', 'n3', 'i3')]):
+        if eintrag.get(p_key):
+            liste.append((eintrag.get(n_key) or f"S{idx+1}", eintrag.get(p_key), eintrag.get(i_key) or {}))
+    return liste
 
 
 def zeichne_zeile(eintrag, zeige_checkbox=False):
-    link_id = eintrag["id"]
-    status = eintrag.get("status", "aktiv")
-
     with st.container(border=True):
         top_cols = st.columns([4, 2, 1, 1, 1, 1])
         with top_cols[0]:
             st.markdown(f"**📍 {eintrag.get('route', '')}**")
-        with top_cols[1]:
-            if zeige_checkbox:
-                team_key = f"team_{link_id}"
-                st.session_state[team_key] = bool(eintrag.get("in_team", False))
-                st.checkbox("Im Team", key=team_key, disabled=gesperrt, on_change=team_umschalten, args=(aktueller_run, link_id, team_key))
-        with top_cols[2]:
-            with st.popover("✏️", help="Bearbeiten (z.B. nach einer Entwicklung)", disabled=gesperrt):
-                bearbeiten_formular(eintrag)
-        with top_cols[3]:
-            if status == "aktiv":
-                if st.button("🏃", key=f"v_{link_id}", help="Verpasst", disabled=gesperrt): tracker_logik.status_aendern(link_id, "verpasst"); st.rerun()
-            else:
-                if st.button("♻️", key=f"a_{link_id}", help="Aktiv", disabled=gesperrt): tracker_logik.status_aendern(link_id, "aktiv"); st.rerun()
-        with top_cols[4]:
-            if status != "friedhof":
-                if st.button("💀", key=f"f_{link_id}", help="Friedhof", disabled=gesperrt): tracker_logik.status_aendern(link_id, "friedhof"); st.rerun()
-            else:
-                if st.button("🏃", key=f"v2_{link_id}", help="Verpasst", disabled=gesperrt): tracker_logik.status_aendern(link_id, "verpasst"); st.rerun()
-        with top_cols[5]:
-            with st.popover("🗑️", help="Löschen", disabled=gesperrt):
-                st.markdown(f"**{eintrag.get('route', '')}** wirklich endgültig löschen?")
-                st.caption("Das kann nicht rückgängig gemacht werden.")
-                if st.button("Ja, löschen", key=f"d_{link_id}", type="primary", disabled=gesperrt):
-                    tracker_logik.link_loeschen(link_id)
-                    melde("success", f"Link '{eintrag.get('route', '')}' gelöscht.")
-                    st.rerun()
+        zeichne_aktionen(eintrag, zeige_checkbox, top_cols[1:])
 
         karten_cols = st.columns(3)
-        for idx, (p_key, n_key, i_key) in enumerate([('p1', 'n1', 'i1'), ('p2', 'n2', 'i2'), ('p3', 'n3', 'i3')]):
-            pokemon_name = eintrag.get(p_key)
-            if pokemon_name:
-                infos = eintrag.get(i_key, {})
-                spieler_name = eintrag.get(n_key) or f"S{idx+1}"
-                with karten_cols[idx]:
-                    sub_col1, sub_col2 = st.columns([1, 4])
-                    with sub_col1:
-                        bild_pfad = infos.get("bild") if infos else None
-                        if bild_pfad:
-                            st.image(bild_pfad, width=45)
-                        else:
-                            st.markdown("<h4>❓</h4>", unsafe_allow_html=True)
-                    with sub_col2:
-                        st.markdown(f"<div style='line-height: 1.1; margin-bottom: 2px;'><b>{spieler_name}:</b> {pokemon_name}</div>", unsafe_allow_html=True)
-                        typen = infos.get("typen", ["Unbekannt"]) if infos else ["Unbekannt"]
-                        badges_html = ""
-                        for typ in typen:
-                            farbe = TYP_FARBEN.get(typ, "#68A090")
-                            badges_html += f"<span style='background-color:{farbe}; color:white; padding:1px 5px; border-radius:3px; font-size:11px; margin-right:3px;'>{typ}</span>"
-                        st.markdown(badges_html, unsafe_allow_html=True)
+        for idx, (spieler_name, pokemon_name, infos) in enumerate(pokemon_des_links(eintrag)):
+            with karten_cols[idx]:
+                sub_col1, sub_col2 = st.columns([1, 4])
+                with sub_col1:
+                    bild_pfad = infos.get("bild")
+                    if bild_pfad:
+                        st.image(bild_pfad, width=45)
+                    else:
+                        st.markdown("<h4>❓</h4>", unsafe_allow_html=True)
+                with sub_col2:
+                    st.markdown(f"<div style='line-height: 1.1; margin-bottom: 2px;'><b>{spieler_name}:</b> {pokemon_name}</div>", unsafe_allow_html=True)
+                    st.markdown(typ_badges(infos.get("typen") or ["Unbekannt"]), unsafe_allow_html=True)
+
+
+def zeichne_teamkarte(eintrag):
+    """Große Karte für einen Link im aktiven Team."""
+    with st.container(border=True):
+        st.markdown(f"**📍 {eintrag.get('route', '')}**")
+        pokes = pokemon_des_links(eintrag)
+        if pokes:
+            for spalte, (spieler_name, pokemon_name, infos) in zip(st.columns(len(pokes)), pokes):
+                with spalte:
+                    bild_pfad = infos.get("bild")
+                    bild = (f"<img src='{bild_pfad}' width='80' style='image-rendering: pixelated;'>" if bild_pfad
+                            else "<div style='font-size:40px; line-height:80px;'>❓</div>")
+                    st.markdown(
+                        f"<div style='text-align:center; line-height:1.25;'>{bild}<br>"
+                        f"<b>{pokemon_name}</b><br><span style='font-size:12px; opacity:0.7;'>{spieler_name}</span><br>"
+                        f"{typ_badges(infos.get('typen') or ['Unbekannt'])}</div>",
+                        unsafe_allow_html=True)
+        zeichne_aktionen(eintrag, True, st.columns([2, 1, 1, 1, 1]))
 
 # ==========================================
-# 5. ÜBERSICHT & TABS ZEICHNEN
+# 5. ÜBERSICHT & TABS ZEICHNEN (aktualisiert sich live)
 # ==========================================
-aktive =[e for e in daten if e.get("status") == "aktiv"]
-team_links = [e for e in aktive if e.get("in_team", False)]
-box_links = [e for e in aktive if not e.get("in_team", False)]
-friedhof_links = [e for e in daten if e.get("status") == "friedhof"]
-verpasst_links = [e for e in daten if e.get("status") == "verpasst"]
+st.session_state.live_stand = {"run": aktueller_run, "version": live_version, "daten": daten}
 
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("🟢 Lebende Links", len(aktive))
-m2.metric("⚔️ Im Team", f"{len(team_links)}/6")
-m3.metric("💀 Friedhof", len(friedhof_links))
-m4.metric("🏃 Verpasst", len(verpasst_links))
 
-tab_aktiv, tab_friedhof, tab_verpasst = st.tabs([
-    f"🟢 Aktive Links ({len(aktive)})",
-    f"💀 Friedhof ({len(friedhof_links)})",
-    f"🏃 Verpasste Encounter ({len(verpasst_links)})",
-])
+@live_fragment
+def live_bereich():
+    stand = st.session_state.get("live_stand") or {}
+    version_jetzt = beobachter.version if beobachter else 0
+    if (st.session_state.pop("live_neu_laden", False) or stand.get("run") != aktueller_run
+            or stand.get("version") != version_jetzt):
+        stand = {"run": aktueller_run, "version": version_jetzt, "daten": tracker_logik.lade_daten(aktueller_run)}
+        st.session_state.live_stand = stand
+    alle = stand["daten"]
 
-with tab_aktiv:
-    if "team_fehler" in st.session_state:
-        st.error(st.session_state.team_fehler)
-        del st.session_state.team_fehler
+    aktive = [e for e in alle if e.get("status") == "aktiv"]
+    team_links = [e for e in aktive if e.get("in_team", False)]
+    box_links = [e for e in aktive if not e.get("in_team", False)]
+    friedhof_links = [e for e in alle if e.get("status") == "friedhof"]
+    verpasst_links = [e for e in alle if e.get("status") == "verpasst"]
 
-    st.markdown(f"**⚔️ Aktives Team ({len(team_links)}/6)**")
-    for e in team_links:
-        zeichne_zeile(e, zeige_checkbox=True)
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("🟢 Lebende Links", len(aktive))
+    m2.metric("⚔️ Im Team", f"{len(team_links)}/6")
+    m3.metric("💀 Friedhof", len(friedhof_links))
+    m4.metric("🏃 Verpasst", len(verpasst_links))
+    if beobachter and beobachter.aktiv:
+        st.caption("🟢 Live – Änderungen deiner Mitspieler erscheinen automatisch.")
 
-    st.divider()
+    tab_aktiv, tab_friedhof, tab_verpasst = st.tabs([
+        f"🟢 Aktive Links ({len(aktive)})",
+        f"💀 Friedhof ({len(friedhof_links)})",
+        f"🏃 Verpasste Encounter ({len(verpasst_links)})",
+    ])
 
-    st.markdown(f"**📦 PC Box ({len(box_links)})**")
-    for e in box_links:
-        zeichne_zeile(e, zeige_checkbox=True)
+    with tab_aktiv:
+        if "team_fehler" in st.session_state:
+            st.error(st.session_state.team_fehler)
+            del st.session_state.team_fehler
 
-with tab_friedhof:
-    for e in friedhof_links:
-        zeichne_zeile(e, zeige_checkbox=False)
+        st.markdown(f"**⚔️ Aktives Team ({len(team_links)}/6)**")
+        if not team_links:
+            st.caption("Noch niemand im Team – hake bei einem Link in der PC-Box „Im Team“ an.")
+        for start in range(0, len(team_links), 3):
+            for spalte, e in zip(st.columns(3), team_links[start:start + 3]):
+                with spalte:
+                    zeichne_teamkarte(e)
 
-with tab_verpasst:
-    for e in verpasst_links:
-        zeichne_zeile(e, zeige_checkbox=False)
+        st.divider()
+
+        st.markdown(f"**📦 PC Box ({len(box_links)})**")
+        for e in box_links:
+            zeichne_zeile(e, zeige_checkbox=True)
+
+    with tab_friedhof:
+        for e in friedhof_links:
+            zeichne_zeile(e, zeige_checkbox=False)
+
+    with tab_verpasst:
+        for e in verpasst_links:
+            zeichne_zeile(e, zeige_checkbox=False)
+
+
+live_bereich()
