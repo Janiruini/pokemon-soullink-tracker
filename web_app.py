@@ -569,48 +569,6 @@ def zeichne_zeile(eintrag, zeige_checkbox=False):
                     st.markdown(typ_badges(infos.get("typen") or ["Unbekannt"]), unsafe_allow_html=True)
 
 
-def team_trainer(team_links):
-    """Namen der Trainer für die Kopfzeile der Team-Ansicht (Spieler 1, 2, 3 = Spalten)."""
-    anzahl = max([einst.get("anzahl_spieler", 1)] + [len(pokemon_des_links(e)) for e in team_links] +
-                 [i + 1 for e in team_links for i in range(3) if e.get(f"p{i+1}")])
-    namen = []
-    for i in range(anzahl):
-        name = (einst["spieler"][i] if i < len(einst["spieler"]) else "") or \
-               next((e.get(f"n{i+1}") for e in team_links if e.get(f"n{i+1}")), "") or f"Spieler {i+1}"
-        namen.append(name)
-    return namen
-
-
-def zeichne_team(team_links):
-    """Team-Übersicht: oben die Trainer nebeneinander, darunter pro Link eine Zeile,
-    in der jedes Pokémon in der Spalte seines Trainers steht."""
-    trainer = team_trainer(team_links)
-    kopf = st.columns(len(trainer))
-    for spalte, name in zip(kopf, trainer):
-        spalte.markdown(f"<div style='text-align:center; font-size:1.1em;'><b>🧢 {name}</b></div>", unsafe_allow_html=True)
-
-    for eintrag in team_links:
-        with st.container(border=True):
-            top_cols = st.columns([4, 2, 1, 1, 1, 1])
-            with top_cols[0]:
-                st.markdown(f"**📍 {eintrag.get('route', '')}**")
-            zeichne_aktionen(eintrag, True, top_cols[1:])
-
-            for idx, spalte in enumerate(st.columns(len(trainer))):
-                pokemon_name = eintrag.get(f"p{idx+1}")
-                with spalte:
-                    if not pokemon_name:
-                        st.markdown("<div style='text-align:center; opacity:0.4;'>—</div>", unsafe_allow_html=True)
-                        continue
-                    infos = eintrag.get(f"i{idx+1}") or {}
-                    bild_pfad = infos.get("bild")
-                    bild = (f"<img src='{bild_pfad}' width='72' style='image-rendering: pixelated;'>" if bild_pfad
-                            else "<div style='font-size:36px; line-height:72px;'>❓</div>")
-                    st.markdown(
-                        f"<div style='text-align:center; line-height:1.25;'>{bild}<br>"
-                        f"<b>{pokemon_name}</b><br>{typ_badges(infos.get('typen') or ['Unbekannt'])}</div>",
-                        unsafe_allow_html=True)
-
 # ==========================================
 # 5. ÜBERSICHT & TABS ZEICHNEN
 # ==========================================
@@ -640,10 +598,8 @@ def zeichne_uebersicht(alle):
             del st.session_state.team_fehler
 
         st.markdown(f"**⚔️ Aktives Team ({len(team_links)}/6)**")
-        if not team_links:
-            st.caption("Noch niemand im Team – hake bei einem Link in der PC-Box „Im Team“ an.")
-        else:
-            zeichne_team(team_links)
+        for e in team_links:
+            zeichne_zeile(e, zeige_checkbox=True)
 
         st.divider()
 
