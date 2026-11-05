@@ -2,7 +2,7 @@ import firebase_admin
 
 # Bei jeder Änderung an dieser Datei erhöhen UND in web_app.py anpassen.
 # So erkennt die Web-App, wenn Streamlit noch eine alte Version im Speicher hat.
-MODUL_VERSION = 4
+MODUL_VERSION = 5
 from firebase_admin import credentials, firestore
 import requests
 import os
@@ -403,30 +403,6 @@ def run_passwort_setzen(run_id, passwort):
     if not speichere_run_einstellungen(run_id, pw_hash=pw_hash, pw_salt=salt):
         return None
     return freigabe_schluessel(run_id, {"pw_hash": pw_hash})
-
-
-# ---------- Live-Aktualisierung ----------
-class RunBeobachter:
-    """Lässt sich von Firebase benachrichtigen, sobald sich Links eines Runs ändern.
-    Kostet nur Lesevorgänge für tatsächlich geänderte Einträge (kein ständiges Neuladen).
-    Klappt der Listener nicht, bleibt aktiv=False und die App läuft einfach ohne Live-Modus."""
-
-    def __init__(self, run_id):
-        self.run_id = run_id
-        self.version = 0
-        self.aktiv = False
-        self._erste_meldung = True
-        try:
-            self._watch = db.collection("links").where("run_id", "==", run_id).on_snapshot(self._geaendert)
-            self.aktiv = True
-        except Exception as e:
-            print("Live-Aktualisierung nicht verfügbar:", e)
-
-    def _geaendert(self, docs, changes, read_time):
-        if self._erste_meldung:  # die erste Meldung ist nur der Anfangszustand
-            self._erste_meldung = False
-            return
-        self.version += 1
 
 
 def run_loeschen(run_id):

@@ -6,7 +6,7 @@ import importlib
 
 # Streamlit lädt nach einem Update manchmal nur web_app.py neu, aber nicht tracker_logik.py.
 # Passt die Version nicht, wird die Logik-Datei hier frisch geladen.
-ERWARTETE_LOGIK_VERSION = 4
+ERWARTETE_LOGIK_VERSION = 5
 if getattr(tracker_logik, "MODUL_VERSION", 0) != ERWARTETE_LOGIK_VERSION:
     tracker_logik = importlib.reload(tracker_logik)
 
@@ -30,26 +30,6 @@ st.markdown("""
     div[data-testid="stVerticalBlock"] { gap: 0.5rem; }
     </style>
 """, unsafe_allow_html=True)
-
-
-LIVE_INTERVALL = "4s"  # wie oft der Listenbereich auf Änderungen schaut (ohne Datenbank-Abfrage)
-
-
-@st.cache_resource(show_spinner=False)
-def beobachter_fuer(run_id):
-    """Ein gemeinsamer Firebase-Listener pro Run für alle Besucher."""
-    return tracker_logik.RunBeobachter(run_id)
-
-
-def live_fragment(fn):
-    """Lässt eine Funktion alle paar Sekunden neu zeichnen (falls Streamlit das kann)."""
-    fragment = getattr(st, "fragment", None)
-    if fragment is None:
-        return fn
-    try:
-        return fragment(run_every=LIVE_INTERVALL)(fn)
-    except TypeError:
-        return fn
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -149,12 +129,6 @@ if auswahl != NEUER_RUN:
         elif "schluessel" in st.query_params:
             del st.query_params["schluessel"]
 
-try:
-    beobachter = beobachter_fuer(aktueller_run)
-except Exception as e:
-    print("Live-Aktualisierung nicht verfügbar:", e)
-    beobachter = None
-live_version = beobachter.version if beobachter else 0  # vor dem Laden merken, damit keine Änderung verloren geht
 daten = tracker_logik.lade_daten(aktueller_run)
 
 if auswahl != NEUER_RUN:
@@ -510,7 +484,6 @@ def team_umschalten(run, link_id, key):
     erfolg, msg = tracker_logik.team_status_aendern(run, link_id, st.session_state[key])
     if not erfolg:
         st.session_state.team_fehler = msg
-    st.session_state.live_neu_laden = True  # Liste sofort mit dem neuen Team-Stand zeichnen
 
 
 def zeichne_aktionen(eintrag, zeige_checkbox, spalten):
@@ -603,20 +576,9 @@ def zeichne_teamkarte(eintrag):
         zeichne_aktionen(eintrag, True, st.columns([2, 1, 1, 1, 1]))
 
 # ==========================================
-# 5. ÜBERSICHT & TABS ZEICHNEN (aktualisiert sich live)
+# 5. ÜBERSICHT & TABS ZEICHNEN
 # ==========================================
-st.session_state.live_stand = {"run": aktueller_run, "version": live_version, "daten": daten}
-
-
-@live_fragment
-def live_bereich():
-    stand = st.session_state.get("live_stand") or {}
-    version_jetzt = beobachter.version if beobachter else 0
-    if (st.session_state.pop("live_neu_laden", False) or stand.get("run") != aktueller_run
-            or stand.get("version") != version_jetzt):
-        stand = {"run": aktueller_run, "version": version_jetzt, "daten": tracker_logik.lade_daten(aktueller_run)}
-        st.session_state.live_stand = stand
-    alle = stand["daten"]
+def zeichne_uebersicht(alle):
 
     aktive = [e for e in alle if e.get("status") == "aktiv"]
     team_links = [e for e in aktive if e.get("in_team", False)]
@@ -629,8 +591,6 @@ def live_bereich():
     m2.metric("⚔️ Im Team", f"{len(team_links)}/6")
     m3.metric("💀 Friedhof", len(friedhof_links))
     m4.metric("🏃 Verpasst", len(verpasst_links))
-    if beobachter and beobachter.aktiv:
-        st.caption("🟢 Live – Änderungen deiner Mitspieler erscheinen automatisch.")
 
     tab_aktiv, tab_friedhof, tab_verpasst = st.tabs([
         f"🟢 Aktive Links ({len(aktive)})",
@@ -666,4 +626,4 @@ def live_bereich():
             zeichne_zeile(e, zeige_checkbox=False)
 
 
-live_bereich()
+zeichne_uebersicht(daten)
