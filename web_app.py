@@ -42,6 +42,14 @@ st.sidebar.title("💾 Spielstand")
 
 NEUER_RUN = "➕ Neuen Run anlegen…"
 alle_runs = list(runs_laden())
+if st.session_state.pop("run_geloescht", None):
+    # Nach dem Löschen eines Runs: Auswahl zurücksetzen, damit ein anderer Run gewählt wird
+    st.session_state.pop("run_auswahl", None)
+    st.session_state.pop("letzter_run", None)
+    st.session_state.pop("geladener_run", None)
+    if "run" in st.query_params:
+        del st.query_params["run"]
+
 url_run = st.query_params.get("run")
 
 if "run_wunsch" in st.session_state:
@@ -88,6 +96,24 @@ if st.session_state.get("geladener_run") != aktueller_run:
     st.session_state.einst = tracker_logik.lade_run_einstellungen(aktueller_run)
     st.session_state.geladener_run = aktueller_run
 einst = st.session_state.einst
+
+daten = tracker_logik.lade_daten(aktueller_run)
+
+if auswahl != NEUER_RUN:
+    with st.sidebar.expander("🗑️ Run löschen"):
+        st.markdown(f"Löscht **{aktueller_run}** komplett: alle **{len(daten)} {'Link' if len(daten) == 1 else 'Links'}** "
+                    f"(auch Friedhof & Verpasst) und die gespeicherten Einstellungen. Andere Runs bleiben erhalten.")
+        bestaetigung = st.text_input("Zum Bestätigen den Run-Namen eintippen:", key=f"loesch_bestaetigung_{aktueller_run}")
+        if st.button("Run endgültig löschen", type="primary", key=f"run_loeschen_{aktueller_run}",
+                     disabled=bestaetigung.strip() != aktueller_run):
+            erfolg, anzahl = tracker_logik.run_loeschen(aktueller_run)
+            runs_laden.clear()
+            if erfolg:
+                melde("success", f"Run '{aktueller_run}' mit {anzahl} {'Link' if anzahl == 1 else 'Links'} gelöscht.")
+            else:
+                melde("error", f"Beim Löschen ist ein Fehler aufgetreten ({anzahl} Links wurden gelöscht). Bitte nochmal versuchen.")
+            st.session_state.run_geloescht = True
+            st.rerun()
 
 st.sidebar.markdown("---")
 
@@ -429,9 +455,7 @@ def zeichne_zeile(eintrag, zeige_checkbox=False):
 # ==========================================
 # 5. ÜBERSICHT & TABS ZEICHNEN
 # ==========================================
-daten = tracker_logik.lade_daten(aktueller_run)
-
-aktive = [e for e in daten if e.get("status") == "aktiv"]
+aktive =[e for e in daten if e.get("status") == "aktiv"]
 team_links = [e for e in aktive if e.get("in_team", False)]
 box_links = [e for e in aktive if not e.get("in_team", False)]
 friedhof_links = [e for e in daten if e.get("status") == "friedhof"]

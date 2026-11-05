@@ -331,6 +331,21 @@ def lade_run_einstellungen(run_id):
     return einstellungen
 
 
+def run_loeschen(run_id):
+    """Löscht einen kompletten Run: alle seine Links und seine Einstellungen.
+    Andere Runs bleiben unberührt. Gibt (erfolg, anzahl_geloeschter_links) zurück."""
+    anzahl = 0
+    try:
+        for doc in db.collection("links").where("run_id", "==", run_id).stream():
+            db.collection("links").document(doc.id).delete()
+            anzahl += 1
+        db.collection("runs").document(_run_doc_id(run_id)).delete()
+        return True, anzahl
+    except Exception as e:
+        print("Fehler beim Löschen des Runs:", e)
+        return False, anzahl
+
+
 def speichere_run_einstellungen(run_id, **felder):
     """Speichert einzelne Einstellungen eines Runs (andere bleiben erhalten)."""
     try:
