@@ -371,9 +371,28 @@ for idx, cap in enumerate(caps):
 # ==========================================
 # 3. EINGABE-BEREICH
 # ==========================================
-st.title(f"🔥 Pokémon Soul-Link Tracker")
-cap_hinweis = f" · 🎯 Nächster Level-Cap: **{naechster_cap}**" if naechster_cap else ""
-st.caption(f"Aktueller Spielstand: **{aktueller_run}**{cap_hinweis}")
+try:
+    titel_spalte, typ_spalte = st.columns([3, 1], vertical_alignment="center")
+except TypeError:
+    titel_spalte, typ_spalte = st.columns([3, 1])
+
+with titel_spalte:
+    st.title(f"🔥 Pokémon Soul-Link Tracker")
+    cap_hinweis = f" · 🎯 Nächster Level-Cap: **{naechster_cap}**" if naechster_cap else ""
+    st.caption(f"Aktueller Spielstand: **{aktueller_run}**{cap_hinweis}")
+
+# Kleine Typ-Suche oben rechts (z.B. für Gegner im Kampf) – nutzt die lokalen Pokémon-Daten
+with typ_spalte:
+    gesucht = st.selectbox("Typ nachschlagen", POKEMON_NAMEN, index=None, key="typ_suche",
+                           placeholder="🔍 Typ nachschlagen…", label_visibility="collapsed")
+    if gesucht:
+        treffer = tracker_logik.finde_pokemon(gesucht)
+        typen = (treffer or {}).get("typen") or ["Unbekannt"]
+        badges = "".join(
+            f"<span style='background-color:{TYP_FARBEN.get(t, '#68A090')}; color:white; padding:1px 6px; "
+            f"border-radius:3px; font-size:12px; margin-right:4px;'>{t}</span>" for t in typen)
+        st.markdown(f"<div style='font-size:13px;'><b>{html.escape(gesucht)}</b>&nbsp; {badges}</div>",
+                    unsafe_allow_html=True)
 
 formular_nr = st.session_state.setdefault("formular_nr", 0)
 
