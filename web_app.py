@@ -3,6 +3,7 @@ import tracker_logik
 import os
 import re
 import importlib
+import html
 
 # Streamlit lädt nach einem Update manchmal nur web_app.py neu, aber nicht tracker_logik.py.
 # Passt die Version nicht, wird die Logik-Datei hier frisch geladen.
@@ -28,6 +29,22 @@ POKEMON_NAMEN = tracker_logik.alle_pokemon_namen()
 st.markdown("""
     <style>
     div[data-testid="stVerticalBlock"] { gap: 0.5rem; }
+
+    /* Party-Slot-Design für Links im aktiven Team */
+    [class*="st-key-teamslot_"] { background: #185FA5; border: 2px solid #0C447C; border-radius: 16px; padding: 10px 12px 12px 12px; }
+    [class*="st-key-teamslot_"] [data-testid="stCheckbox"] p { color: #E6F1FB; }
+    .teamslot-route { color: #E6F1FB; font-weight: 600; padding-top: 6px; }
+    .teamslots { display: grid; gap: 8px; }
+    .teamslot { display: flex; gap: 10px; align-items: center; min-width: 0;
+                background: #E6F1FB; border-radius: 30px 10px 10px 30px; padding: 5px 10px 5px 5px; }
+    .teamslot .ring { width: 54px; height: 54px; flex: 0 0 54px; border-radius: 50%; border: 3px solid #68A090;
+                      background: #ffffff; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .teamslot .ring img { width: 60px; height: 60px; image-rendering: pixelated; }
+    .teamslot .ring span { font-size: 24px; }
+    .teamslot .info { min-width: 0; }
+    .teamslot .trainer { font-size: 12px; color: #185FA5; line-height: 1.2; }
+    .teamslot .pname { font-weight: 600; color: #042C53; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    @media (max-width: 640px) { .teamslots { grid-template-columns: 1fr !important; } }
     </style>
 """, unsafe_allow_html=True)
 
@@ -569,6 +586,35 @@ def zeichne_zeile(eintrag, zeige_checkbox=False):
                     st.markdown(typ_badges(infos.get("typen") or ["Unbekannt"]), unsafe_allow_html=True)
 
 
+def zeichne_teamslot(eintrag):
+    """Link im aktiven Team im Party-Slot-Design: blaue Zeile, darunter ein Slot pro Trainer.
+    Gleiche Buttons und Reihenfolge wie in der Listenansicht."""
+    link_id = eintrag["id"]
+    try:
+        rahmen = st.container(key=f"teamslot_{link_id}")
+    except TypeError:  # sehr alte Streamlit-Version: normale Listenzeile
+        zeichne_zeile(eintrag, zeige_checkbox=True)
+        return
+    with rahmen:
+        top_cols = st.columns([4, 2, 1, 1, 1, 1])
+        with top_cols[0]:
+            st.markdown(f"<div class='teamslot-route'>📍 {html.escape(eintrag.get('route', ''))}</div>", unsafe_allow_html=True)
+        zeichne_aktionen(eintrag, True, top_cols[1:])
+
+        slots = []
+        for spieler_name, pokemon_name, infos in pokemon_des_links(eintrag):
+            typen = infos.get("typen") or ["Unbekannt"]
+            ring_farbe = TYP_FARBEN.get(typen[0], "#68A090")
+            bild_pfad = infos.get("bild")
+            bild = f"<img src='{html.escape(bild_pfad)}' alt=''>" if bild_pfad else "<span>❓</span>"
+            slots.append(
+                f"<div class='teamslot'><div class='ring' style='border-color:{ring_farbe};'>{bild}</div>"
+                f"<div class='info'><div class='trainer'>{html.escape(spieler_name)}</div>"
+                f"<div class='pname'>{html.escape(pokemon_name)}</div>{typ_badges(typen)}</div></div>")
+        spalten = max(2, min(3, max(len(slots), einst.get("anzahl_spieler", 1))))
+        st.markdown(f"<div class='teamslots' style='grid-template-columns: repeat({spalten}, minmax(0, 1fr));'>"
+                    + "".join(slots) + "</div>", unsafe_allow_html=True)
+
 # ==========================================
 # 5. ÜBERSICHT & TABS ZEICHNEN
 # ==========================================
@@ -599,7 +645,7 @@ def zeichne_uebersicht(alle):
 
         st.markdown(f"**⚔️ Aktives Team ({len(team_links)}/6)**")
         for e in team_links:
-            zeichne_zeile(e, zeige_checkbox=True)
+            zeichne_teamslot(e)
 
         st.divider()
 
