@@ -2,7 +2,7 @@ import firebase_admin
 
 # Bei jeder Änderung an dieser Datei erhöhen UND in web_app.py anpassen.
 # So erkennt die Web-App, wenn Streamlit noch eine alte Version im Speicher hat.
-MODUL_VERSION = 9
+MODUL_VERSION = 10
 from firebase_admin import credentials, firestore
 import requests
 import os
@@ -574,7 +574,7 @@ def link_loeschen(doc_id):
 # Einstellungen pro Run (Spielernamen, gewähltes Spiel, besiegte Arenen) liegen
 # in einer eigenen Sammlung "runs". Die bestehenden "links" bleiben unverändert.
 STANDARD_EINSTELLUNGEN = {"spieler": ["", "", ""], "anzahl_spieler": 1, "spiel": None, "besiegt": {},
-                          "pw_hash": None, "pw_salt": None}
+                          "pw_hash": None, "pw_salt": None, "design": "gbc"}
 
 
 def _run_doc_id(run_id):

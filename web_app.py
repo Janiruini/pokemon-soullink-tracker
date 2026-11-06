@@ -7,7 +7,7 @@ import html
 
 # Streamlit lädt nach einem Update manchmal nur web_app.py neu, aber nicht tracker_logik.py.
 # Passt die Version nicht, wird die Logik-Datei hier frisch geladen.
-ERWARTETE_LOGIK_VERSION = 9
+ERWARTETE_LOGIK_VERSION = 10
 if getattr(tracker_logik, "MODUL_VERSION", 0) != ERWARTETE_LOGIK_VERSION:
     tracker_logik = importlib.reload(tracker_logik)
 
@@ -46,6 +46,63 @@ st.markdown("""
     .teamslot .pname { font-weight: 600; color: #042C53; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     </style>
 """, unsafe_allow_html=True)
+
+
+# Game-Boy-Color-Look (Gehäuse "Löwenzahn", an Dark Mode angepasst). Nur Optik – an der Bedienung ändert sich nichts.
+GBC_CSS = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+:root { --gbc-shell: #B07D12; --gbc-acc: #F5D27A; --gbc-screen: #141720; --gbc-box: #262B38; --gbc-rand: #0E1018;
+        --gbc-feld: #1B1F2A; --gbc-feldrand: #4A5163; --gbc-text: #ECEAF4; --gbc-leise: #8E93A3; --gbc-slot: #323848; }
+.stApp, [data-testid="stHeader"] { background: var(--gbc-screen) !important; }
+.stApp { color: var(--gbc-text); }
+.stApp p, .stApp li, .stApp label, [data-testid="stWidgetLabel"] p, [data-testid="stMarkdownContainer"] { color: var(--gbc-text); }
+/* Gehäuse-Rahmen um die ganze Seite (liegt nur obendrauf, verschiebt nichts) */
+.stApp::after { content: ""; position: fixed; inset: 0; border: 8px solid var(--gbc-shell); border-radius: 14px 14px 44px 14px;
+                pointer-events: none; z-index: 999990; }
+/* Überschriften in Pixel-Schrift */
+.stApp h1 { font-family: 'Press Start 2P', monospace !important; font-size: 1.35rem !important; line-height: 1.5 !important; color: var(--gbc-acc) !important; }
+[data-testid="stSidebar"] h1 { font-size: 0.8rem !important; }
+.stApp h2, .stApp h3 { font-family: 'Press Start 2P', monospace !important; font-size: 0.9rem !important; color: var(--gbc-acc) !important; }
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p { color: var(--gbc-leise) !important; }
+.stApp hr { border-color: #2E3443 !important; }
+/* Seitenleiste */
+[data-testid="stSidebar"] { background: #10131B !important; border-right: 3px solid var(--gbc-shell); }
+[data-testid="stSidebar"] p, [data-testid="stSidebar"] label { color: var(--gbc-text) !important; }
+/* Eingabefelder und Auswahllisten */
+.stApp [data-baseweb="input"], .stApp [data-baseweb="select"] > div, .stApp [data-baseweb="textarea"] {
+    background: var(--gbc-feld) !important; border: 2px solid var(--gbc-feldrand) !important; border-radius: 4px !important; }
+.stApp [data-baseweb="input"] input, .stApp [data-baseweb="select"] > div div, .stApp [data-baseweb="textarea"] textarea {
+    color: var(--gbc-text) !important; background: transparent !important; }
+/* Buttons: primär = runder A-Knopf in Gehäusefarbe */
+.stApp button[kind="primary"], .stApp [data-testid="stBaseButton-primary"] {
+    background: var(--gbc-shell) !important; color: #FFFFFF !important; border: 2px solid var(--gbc-rand) !important; border-radius: 16px !important; }
+.stApp button[kind="secondary"], .stApp [data-testid="stBaseButton-secondary"], .stApp [data-testid="stPopover"] button {
+    background: var(--gbc-box) !important; color: var(--gbc-text) !important; border: 2px solid var(--gbc-feldrand) !important; }
+.stApp button p { color: inherit !important; }
+/* Boxen im Gold/Silber-Stil: dicker dunkler Rand + feine Innenlinie in Gehäusefarbe */
+[class*="st-key-zeile_"], [data-testid="stExpander"] details, [data-testid="stMetric"] {
+    background: var(--gbc-box) !important; border: 3px solid var(--gbc-rand) !important; border-radius: 6px !important;
+    box-shadow: inset 0 0 0 2px var(--gbc-box), inset 0 0 0 4px var(--gbc-shell) !important; }
+[data-testid="stMetric"] { padding: 8px 12px; }
+[data-testid="stMetricValue"] { color: var(--gbc-acc) !important; font-family: 'Press Start 2P', monospace; font-size: 1.3rem !important; }
+[data-testid="stExpander"] summary p { color: var(--gbc-acc) !important; }
+/* Tabs */
+.stApp [data-baseweb="tab"] p { color: var(--gbc-leise); }
+.stApp [data-baseweb="tab"][aria-selected="true"] p { color: var(--gbc-acc) !important; }
+.stApp [data-baseweb="tab-highlight"] { background: var(--gbc-acc) !important; }
+/* Team-Slots im GBC-Look */
+[class*="st-key-teamslot_"] { background: var(--gbc-box) !important; border: 3px solid var(--gbc-rand) !important; border-radius: 6px !important;
+    box-shadow: inset 0 0 0 2px var(--gbc-box), inset 0 0 0 4px var(--gbc-shell) !important; }
+[class*="st-key-slot_"] { background: var(--gbc-slot) !important; border: 2px solid var(--gbc-rand); }
+.teamslot-route { color: var(--gbc-acc) !important; font-family: 'Press Start 2P', monospace; font-size: 0.7rem; }
+.teamslot .ring { background: var(--gbc-feld) !important; }
+.teamslot .trainer { color: var(--gbc-leise) !important; }
+.teamslot .pname { color: var(--gbc-text) !important; font-family: 'Press Start 2P', monospace; font-size: 0.62rem; line-height: 1.8 !important; }
+/* Typ-Farben etwas gedimmt, damit sie auf Dunkel nicht grell leuchten */
+span.typ { filter: brightness(0.85); }
+</style>
+"""
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -205,6 +262,25 @@ if auswahl != NEUER_RUN and not gesperrt:
                 melde("error", f"Beim Löschen ist ein Fehler aufgetreten ({anzahl} Links wurden gelöscht). Bitte nochmal versuchen.")
             st.session_state.run_geloescht = True
             st.rerun()
+
+# ---------- Design: GBC (Löwenzahn, Dark Mode) oder klassisch ----------
+design_key = f"design_{aktueller_run}"
+if design_key not in st.session_state:
+    st.session_state[design_key] = einst.get("design", "gbc") != "klassisch"
+
+
+def design_gewechselt(run, key):
+    wert = "gbc" if st.session_state[key] else "klassisch"
+    einst["design"] = wert
+    if not gesperrt:  # bei gesperrten Runs gilt die Wahl nur für diesen Besuch
+        tracker_logik.speichere_run_einstellungen(run, design=wert)
+
+
+schalter = getattr(st.sidebar, "toggle", st.sidebar.checkbox)
+schalter("🎮 GBC-Design", key=design_key, on_change=design_gewechselt, args=(aktueller_run, design_key),
+         help="Aus = altes, klassisches Design")
+if st.session_state[design_key]:
+    st.markdown(GBC_CSS, unsafe_allow_html=True)
 
 st.sidebar.markdown("---")
 
@@ -389,7 +465,7 @@ with typ_spalte:
         treffer = tracker_logik.finde_pokemon(gesucht)
         typen = (treffer or {}).get("typen") or ["Unbekannt"]
         badges = "".join(
-            f"<span style='background-color:{TYP_FARBEN.get(t, '#68A090')}; color:white; padding:1px 6px; "
+            f"<span class='typ' style='background-color:{TYP_FARBEN.get(t, '#68A090')}; color:white; padding:1px 6px; "
             f"border-radius:3px; font-size:12px; margin-right:4px;'>{t}</span>" for t in typen)
         st.markdown(f"<div style='font-size:13px;'><b>{html.escape(gesucht)}</b>&nbsp; {badges}</div>",
                     unsafe_allow_html=True)
@@ -639,11 +715,11 @@ def zeichne_aktionen(eintrag, zeige_checkbox, spalten):
 
 
 def typ_badges(typen):
-    html = ""
+    ausgabe = ""
     for typ in typen:
         farbe = TYP_FARBEN.get(typ, "#68A090")
-        html += f"<span style='background-color:{farbe}; color:white; padding:1px 5px; border-radius:3px; font-size:11px; margin:0 2px;'>{typ}</span>"
-    return html
+        ausgabe += f"<span class='typ' style='background-color:{farbe}; color:white; padding:1px 5px; border-radius:3px; font-size:11px; margin:0 2px;'>{typ}</span>"
+    return ausgabe
 
 
 def pokemon_des_links(eintrag):
@@ -655,8 +731,15 @@ def pokemon_des_links(eintrag):
     return liste
 
 
+def zeilen_rahmen(link_id):
+    try:
+        return st.container(border=True, key=f"zeile_{link_id}")
+    except TypeError:  # ältere Streamlit-Version ohne key
+        return st.container(border=True)
+
+
 def zeichne_zeile(eintrag, zeige_checkbox=False):
-    with st.container(border=True):
+    with zeilen_rahmen(eintrag["id"]):
         top_cols = st.columns([4, 2, 1, 1, 1, 1])
         with top_cols[0]:
             st.markdown(f"**📍 {eintrag.get('route', '')}**")
