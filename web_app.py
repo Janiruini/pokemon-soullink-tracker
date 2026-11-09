@@ -526,10 +526,22 @@ for idx, cap in enumerate(caps):
 # ==========================================
 # 3. EINGABE-BEREICH
 # ==========================================
-try:
-    titel_spalte, typ_spalte = st.columns([3, 1], vertical_alignment="center")
-except TypeError:
-    titel_spalte, typ_spalte = st.columns([3, 1])
+anzahl_key = f"anzahl_{aktueller_run}"
+if anzahl_key not in st.session_state:
+    st.session_state[anzahl_key] = einst["anzahl_spieler"]
+anzahl_spieler = st.session_state[anzahl_key]
+
+# Layout: Bei 3 Spielern Typ-Suche oben neben dem Titel und Eingabe über die volle Breite.
+# Bei 1–2 Spielern ist die Eingabe schmaler und Typ-Suche/Schwächen sitzen rechts daneben,
+# damit sie sich in den freien Platz öffnen, ohne die Seite zu verschieben.
+DREI_SPIELER = anzahl_spieler >= 3
+if DREI_SPIELER:
+    try:
+        titel_spalte, typ_spalte = st.columns([3, 1], vertical_alignment="center")
+    except TypeError:
+        titel_spalte, typ_spalte = st.columns([3, 1])
+else:
+    titel_spalte = st.container()
 
 with titel_spalte:
     st.title(f"🔥 Pokémon Soul-Link Tracker")
@@ -582,7 +594,7 @@ def zeichne_schwaechen(pokemon_name):
         st.caption(f"Typen-Tabelle von Gen {GEN_NR} (Spiel aus den Level-Caps).")
 
 
-with typ_spalte:
+def typ_bereich():
     gesucht = st.selectbox("Typ nachschlagen", POKEMON_NAMEN, index=None, key="typ_suche",
                            placeholder="🔍 Typ nachschlagen…", label_visibility="collapsed")
     if gesucht:
@@ -595,18 +607,28 @@ with typ_spalte:
         else:
             st.caption("Oben ein Pokémon suchen, dann siehst du hier, was wie stark trifft.")
 
+if DREI_SPIELER:
+    with typ_spalte:
+        typ_bereich()
+    eingabe_spalte = st.container()
+else:
+    eingabe_spalte, rechts_spalte = st.columns([2, 1], gap="large")
+    with rechts_spalte:
+        typ_bereich()
+
 formular_nr = st.session_state.setdefault("formular_nr", 0)
 
 if gesperrt:
-    st.info("🔒 Dieser Run ist geschützt. Ansehen geht, zum Eintragen und Bearbeiten links mit dem Passwort entsperren.")
+    eingabe_spalte.info("🔒 Dieser Run ist geschützt. Ansehen geht, zum Eintragen und Bearbeiten links mit dem Passwort entsperren.")
 
 
-def box_rahmen(name):
+def box_rahmen(name, eltern=None):
     """Container mit Schlüssel (für das GBC-Design); ältere Streamlit-Versionen ohne key bekommen einen normalen."""
+    eltern = eltern or st
     try:
-        return st.container(key=name)
+        return eltern.container(key=name)
     except TypeError:
-        return st.container()
+        return eltern.container()
 
 
 KRAFT_STUFEN = ["Keine", "↑ (+10 %)", "↑↑ (+20 %)", "↑↑↑ / S / MAX (+30 %)"]
@@ -669,13 +691,8 @@ def fangchance_bereich(pokemon_name, k):
     st.caption(hinweis)
 
 
-with box_rahmen("eingabebox"):
+with box_rahmen("eingabebox", eingabe_spalte):
     route_input = st.text_input("📍 Route", placeholder="z.B. Route 1", key=f"route_{formular_nr}", disabled=gesperrt)
-
-    anzahl_key = f"anzahl_{aktueller_run}"
-    if anzahl_key not in st.session_state:
-        st.session_state[anzahl_key] = einst["anzahl_spieler"]
-    anzahl_spieler = st.session_state[anzahl_key]
 
 
     def name_geaendert(run, i, key):
@@ -708,7 +725,7 @@ with box_rahmen("eingabebox"):
         return label
 
 
-    spieler_cols = st.columns(3)
+    spieler_cols = st.columns(3 if DREI_SPIELER else 2)
 
     p_names = ["", "", ""]
     p_pokes = ["", "", ""]
