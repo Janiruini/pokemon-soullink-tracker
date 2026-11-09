@@ -2,7 +2,7 @@ import firebase_admin
 
 # Bei jeder Änderung an dieser Datei erhöhen UND in web_app.py anpassen.
 # So erkennt die Web-App, wenn Streamlit noch eine alte Version im Speicher hat.
-MODUL_VERSION = 11
+MODUL_VERSION = 12
 from firebase_admin import credentials, firestore
 import requests
 import os
@@ -489,7 +489,20 @@ def wuerfe_fuer(chance, ziel=0.9):
 # ==========================================
 # 3. DATENBANK LOGIK & PRÜFUNGEN
 # ==========================================
-def lade_daten(run_id):
+# Nach jedem Schreibzugriff werden diese Funktionen aufgerufen (die Web-App leert damit ihren
+# Zwischenspeicher, damit sofort wieder frische Daten angezeigt werden).
+NACH_SCHREIBEN = []
+
+
+def _geschrieben():
+    for rueckruf in list(NACH_SCHREIBEN):
+        try:
+            rueckruf()
+        except Exception as e:
+            print("Zwischenspeicher konnte nicht geleert werden:", e)
+
+
+def lade_daten(run_id, fehler_werfen=False):
     """Lädt alle Daten für die Web-App Anzeige."""
     try:
         docs = db.collection("links").where("run_id", "==", run_id).stream()
@@ -500,6 +513,8 @@ def lade_daten(run_id):
             liste.append(d)
         return liste
     except Exception as e:
+        if fehler_werfen:
+            raise
         return []
 
 
@@ -568,6 +583,7 @@ def link_hinzufuegen(run_id, route, n1, p1, n2, p2, n3, p3, status):
 
     try:
         db.collection("links").add(neuer_link)
+        _geschrieben()
         # Run im Run-Verzeichnis sicherstellen (falls er z.B. nur über die Adresse geöffnet wurde)
         try:
             db.collection("runs").document(_run_doc_id(run_id)).set({"run_id": run_id}, merge=True)
@@ -603,6 +619,7 @@ def link_bearbeiten(doc_id, alter_eintrag, route, namen, pokes):
             update[f"i{nr}"] = hole_pokemon_infos(poke)
     try:
         db.collection("links").document(doc_id).update(update)
+        _geschrieben()
         return True, "Änderung gespeichert!"
     except Exception as e:
         return False, f"Cloud-Fehler: {e}"
@@ -610,7 +627,10 @@ def link_bearbeiten(doc_id, alter_eintrag, route, namen, pokes):
 
 def status_aendern(doc_id, neuer_status):
     """Verschiebt einen Link zwischen Aktiv, Verpasst und Friedhof."""
-    db.collection("links").document(doc_id).update({"status": neuer_status, "in_team": False})
+    try:
+        db.collection("links").document(doc_id).update({"status": neuer_status, "in_team": False})
+    finally:
+        _geschrieben()
 
 
 def team_status_aendern(run_id, doc_id, im_team):
@@ -619,13 +639,19 @@ def team_status_aendern(run_id, doc_id, im_team):
         aktuelles_team = db.collection("links").where("run_id", "==", run_id).where("in_team", "==", True).get()
         if len(aktuelles_team) >= 6:
             return False, "Team ist bereits voll (max. 6)!"
-    db.collection("links").document(doc_id).update({"in_team": im_team})
+    try:
+        db.collection("links").document(doc_id).update({"in_team": im_team})
+    finally:
+        _geschrieben()
     return True, "OK"
 
 
 def link_loeschen(doc_id):
     """Löscht einen Eintrag komplett."""
-    db.collection("links").document(doc_id).delete()
+    try:
+        db.collection("links").document(doc_id).delete()
+    finally:
+        _geschrieben()
 
 # ==========================================
 # 4. RUNS & RUN-EINSTELLUNGEN
@@ -677,7 +703,7 @@ def lade_runs():
     return sorted(namen, key=str.lower)
 
 
-def lade_run_einstellungen(run_id):
+def lade_run_einstellungen(run_id, fehler_werfen=False):
     einstellungen = json.loads(json.dumps(STANDARD_EINSTELLUNGEN))
     try:
         doc = db.collection("runs").document(_run_doc_id(run_id)).get()
@@ -687,6 +713,8 @@ def lade_run_einstellungen(run_id):
                 if k in gespeichert and gespeichert[k] is not None:
                     einstellungen[k] = gespeichert[k]
     except Exception as e:
+        if fehler_werfen:
+            raise
         print("Fehler beim Laden der Run-Einstellungen:", e)
     spieler = list(einstellungen.get("spieler") or [])
     einstellungen["spieler"] = (spieler + ["", "", ""])[:3]
@@ -755,6 +783,8 @@ def run_loeschen(run_id):
     except Exception as e:
         print("Fehler beim Löschen des Runs:", e)
         return False, anzahl
+    finally:
+        _geschrieben()
 
 
 def speichere_run_einstellungen(run_id, **felder):
@@ -763,6 +793,7 @@ def speichere_run_einstellungen(run_id, **felder):
         daten = {"run_id": run_id}
         daten.update(felder)
         db.collection("runs").document(_run_doc_id(run_id)).set(daten, merge=True)
+        _geschrieben()
         return True
     except Exception as e:
         print("Fehler beim Speichern der Run-Einstellungen:", e)

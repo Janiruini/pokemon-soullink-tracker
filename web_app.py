@@ -7,7 +7,7 @@ import html
 
 # Streamlit lädt nach einem Update manchmal nur web_app.py neu, aber nicht tracker_logik.py.
 # Passt die Version nicht, wird die Logik-Datei hier frisch geladen.
-ERWARTETE_LOGIK_VERSION = 11
+ERWARTETE_LOGIK_VERSION = 12
 if getattr(tracker_logik, "MODUL_VERSION", 0) != ERWARTETE_LOGIK_VERSION:
     tracker_logik = importlib.reload(tracker_logik)
 
@@ -209,6 +209,45 @@ span.typ { filter: brightness(0.85); }
 """
 
 
+# ---------- Zwischenspeicher (spart Firebase-Lesevorgänge) ----------
+# Einträge und Einstellungen eines Runs werden zwischengespeichert und von allen Besuchern geteilt.
+# Jeder Schreibzugriff über die App leert den Speicher sofort (tracker_logik.NACH_SCHREIBEN),
+# daher sieht jeder – auch der Mitspieler – nach dem nächsten Klick den aktuellen Stand.
+# Spätestens nach 10 Minuten wird ohnehin neu geladen (falls jemand direkt in Firebase etwas ändert).
+@st.cache_data(ttl=600, show_spinner=False)
+def daten_zwischenspeicher(run_id):
+    return tracker_logik.lade_daten(run_id, fehler_werfen=True)
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def einstellungen_zwischenspeicher(run_id):
+    return tracker_logik.lade_run_einstellungen(run_id, fehler_werfen=True)
+
+
+def zwischenspeicher_leeren():
+    daten_zwischenspeicher.clear()
+    einstellungen_zwischenspeicher.clear()
+
+
+tracker_logik.NACH_SCHREIBEN[:] = [zwischenspeicher_leeren]
+
+
+def lade_daten_schnell(run_id):
+    try:
+        return daten_zwischenspeicher(run_id)
+    except Exception as e:  # Fehler werden nicht zwischengespeichert -> nächster Klick versucht es neu
+        print("Daten konnten nicht geladen werden:", e)
+        return []
+
+
+def lade_einstellungen_schnell(run_id):
+    try:
+        return einstellungen_zwischenspeicher(run_id)
+    except Exception as e:
+        print("Einstellungen konnten nicht geladen werden:", e)
+        return tracker_logik.lade_run_einstellungen(run_id)
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def runs_laden():
     return tracker_logik.lade_runs()
@@ -284,7 +323,7 @@ else:
         st.query_params["run"] = auswahl
 
 # Einstellungen des Runs (Spielernamen, Spiel, besiegte Arenen, Passwort) laden
-st.session_state.einst = tracker_logik.lade_run_einstellungen(aktueller_run)
+st.session_state.einst = lade_einstellungen_schnell(aktueller_run)
 st.session_state.geladener_run = aktueller_run
 einst = st.session_state.einst
 
@@ -306,7 +345,7 @@ if auswahl != NEUER_RUN:
         elif "schluessel" in st.query_params:
             del st.query_params["schluessel"]
 
-daten = tracker_logik.lade_daten(aktueller_run)
+daten = lade_daten_schnell(aktueller_run)
 
 if auswahl != NEUER_RUN:
     if geschuetzt and gesperrt:
