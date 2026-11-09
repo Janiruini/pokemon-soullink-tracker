@@ -7,7 +7,7 @@ import html
 
 # Streamlit lädt nach einem Update manchmal nur web_app.py neu, aber nicht tracker_logik.py.
 # Passt die Version nicht, wird die Logik-Datei hier frisch geladen.
-ERWARTETE_LOGIK_VERSION = 12
+ERWARTETE_LOGIK_VERSION = 13
 if getattr(tracker_logik, "MODUL_VERSION", 0) != ERWARTETE_LOGIK_VERSION:
     tracker_logik = importlib.reload(tracker_logik)
 
@@ -15,6 +15,9 @@ if getattr(tracker_logik, "MODUL_VERSION", 0) != ERWARTETE_LOGIK_VERSION:
 # 1. SEITEN-KONFIGURATION & STATUS
 # ==========================================
 st.set_page_config(page_title="Pokémon Soul-Link", page_icon="🎮", layout="wide")
+
+TYPEN_REIHENFOLGE = ["Normal", "Kampf", "Flug", "Gift", "Boden", "Gestein", "Käfer", "Geist", "Stahl",
+                     "Feuer", "Wasser", "Pflanze", "Elektro", "Psycho", "Eis", "Drache", "Unlicht", "Fee"]
 
 TYP_FARBEN = {
     "Normal": "#A8A77A", "Feuer": "#EE8130", "Wasser": "#6390F0", "Elektro": "#F7D02C",
@@ -29,6 +32,34 @@ POKEMON_NAMEN = tracker_logik.alle_pokemon_namen()
 st.markdown("""
     <style>
     div[data-testid="stVerticalBlock"] { gap: 0.5rem; }
+
+    /* Routen-Kopf im Eingabekasten: Titel links, Static-Häkchen rechts */
+    .feld-titel { font-size: 14px; margin-bottom: 1rem; }
+    [class*="st-key-static_"] { display: flex; justify-content: flex-end; }
+    .static-tag { font-size: 0.75em; opacity: 0.8; border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; margin-left: 4px; }
+
+    /* Team-Schwachstellen unter dem letzten Team-Link (bündig mit den Slots) */
+    .st-key-teamanalyse { padding: 0 12px; border: 1px solid transparent; }
+    .teamanalyse { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-bottom: 1rem;
+                   background: rgba(211, 47, 47, 0.12); border: 2px solid rgba(211, 47, 47, 0.55); border-radius: 8px; padding: 6px 10px; }
+    .teamanalyse.ok { background: rgba(76, 175, 80, 0.10); border-color: rgba(76, 175, 80, 0.45); }
+    .teamanalyse .warn { flex: 0 0 20px; width: 20px; height: 20px; border-radius: 50%; background: #D32F2F; color: #FFFFFF;
+                         font-weight: 800; font-size: 13px; line-height: 20px; text-align: center; }
+    .teamanalyse.ok .warn { background: #43A047; }
+    .teamanalyse .ta-name { font-weight: 600; margin-right: 4px; }
+    .teamanalyse .ta-liste { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+    .teamanalyse .ta-eintrag { white-space: nowrap; }
+    .teamanalyse .ta-eintrag b { font-size: 12px; margin-left: 2px; }
+    .teamanalyse .ta-ok { opacity: 0.8; font-size: 13px; }
+
+    /* Orden-Koffer in der Seitenleiste */
+    .st-key-ordenkoffer { border: 1px solid rgba(128, 128, 128, 0.35); border-radius: 10px; padding: 8px 10px; }
+    .orden-titel { font-weight: 700; margin-bottom: 0.6rem; }
+    .orden-region { font-size: 12px; opacity: 0.75; margin: 2px 0 0.8rem 0; }
+    .orden { text-align: center; margin-bottom: 0.6rem; }
+    .orden img { height: 40px; max-width: 52px; object-fit: contain; image-rendering: pixelated; }
+    .orden.aus img { filter: grayscale(1) brightness(0.55); opacity: 0.6; }
+    [class*="st-key-orden_"] { display: flex; justify-content: center; }
 
     /* Gefangen/Verpasst: gleich groß, füllen ihre Spalte */
     .st-key-btn_gefangen button, .st-key-btn_verpasst button { width: 100% !important; min-height: 42px !important; }
@@ -204,6 +235,12 @@ button:disabled { opacity: 0.45 !important; }
 .stApp [data-baseweb="tab"][aria-selected="true"] p { color: var(--gbc-acc) !important; }
 .stApp [data-baseweb="tab-highlight"] { background: var(--gbc-acc) !important; }
 /* Team-Slots im GBC-Look */
+.st-key-teamanalyse { border-width: 3px !important; }
+.st-key-ordenkoffer { background: #2E3A52 !important; border: 3px solid var(--gbc-rand) !important; border-radius: 8px !important;
+    box-shadow: inset 0 0 0 2px #2E3A52, inset 0 0 0 4px var(--gbc-shell) !important; }
+.orden-titel { font-family: 'Press Start 2P', monospace; font-size: 0.6rem; color: var(--gbc-acc); }
+.orden-region { color: var(--gbc-acc); }
+.orden.an img { filter: drop-shadow(0 0 5px rgba(245, 210, 122, 0.85)); }
 [class*="st-key-teamslot_"] { background: var(--gbc-box) !important; border: 3px solid var(--gbc-rand) !important; border-radius: 6px !important;
     box-shadow: inset 0 0 0 2px var(--gbc-box), inset 0 0 0 4px var(--gbc-shell) !important; }
 [class*="st-key-slot_"] { background: #F4F1E6 !important; border: 2px solid var(--gbc-rand); }
@@ -212,7 +249,10 @@ button:disabled { opacity: 0.45 !important; }
 .teamslot .trainer { color: #7A6420 !important; }
 .teamslot .pname { color: #1E2230 !important; font-family: 'Press Start 2P', monospace; font-size: 0.62rem; line-height: 1.8 !important; }
 /* Typ-Farben etwas gedimmt, damit sie auf Dunkel nicht grell leuchten */
-span.typ { filter: brightness(0.85); }
+span.typ { filter: brightness(0.88); font-family: 'Press Start 2P', monospace !important; font-size: 0.42rem !important;
+           text-transform: uppercase; letter-spacing: 0; line-height: 1.5 !important; padding: 3px 5px !important;
+           border: 2px solid var(--gbc-rand) !important; border-radius: 4px !important; display: inline-block !important;
+           vertical-align: middle; box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.3); text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.55); }
 </style>
 """
 
@@ -573,10 +613,6 @@ if naechster_cap:
     st.sidebar.success(f"Nächster Cap: **{naechster_cap}**")
 elif hat_caps:
     st.sidebar.success("Alle Caps geschafft!")
-if hat_caps:
-    st.sidebar.caption("Hake besiegte Kämpfe ab – das wird pro Run gespeichert.")
-
-
 def cap_umschalten(run, sk, idx, key):
     liste = set(einst["besiegt"].get(sk, []))
     if st.session_state[key]:
@@ -587,13 +623,70 @@ def cap_umschalten(run, sk, idx, key):
     tracker_logik.speichere_run_einstellungen(run, besiegt={sk: sorted(liste)})
 
 
-for idx, cap in enumerate(caps):
-    if ist_cap(cap):
-        key = f"cap_{aktueller_run}_{spiel_schluessel}_{idx}"
-        st.sidebar.checkbox(f"**{cap}**", value=idx in besiegt, key=key, disabled=gesperrt,
-                            on_change=cap_umschalten, args=(aktueller_run, spiel_schluessel, idx, key))
-    else:
-        st.sidebar.markdown(f"*{cap}*")
+# ---------- Orden-Koffer (Orden-Bilder aus dem PokeAPI-Sprite-Archiv, wie die Pokémon-Sprites) ----------
+ORDEN_URL = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/badges/{}.png"
+_KANTO = list(range(1, 9))
+_JOHTO = list(range(9, 17))
+_HOENN = list(range(17, 25))
+# Pro Spiel: [(Überschrift, [(Index in LEVEL_CAPS, Orden-Nummer), ...]), ...]
+ORDEN = {
+    "Gen 1: Rot/Blau": [("", list(zip(range(8), _KANTO)))],
+    "Gen 1: Gelb": [("", list(zip(range(8), _KANTO)))],
+    "Gen 2: Gold/Silber/Kristall": [("Johto", list(zip(range(8), _JOHTO))), ("Kanto", list(zip(range(14, 22), _KANTO)))],
+    "Gen 3: Rubin/Saphir": [("", list(zip(range(8), _HOENN)))],
+    "Gen 3: Smaragd": [("", list(zip(range(8), _HOENN)))],
+    "Gen 3: Feuerrot/Blattgrün": [("", list(zip(range(8), _KANTO)))],
+    "Gen 4: Diamant/Perl": [("", list(zip(range(8), range(25, 33))))],
+    "Gen 4: Platin": [("", list(zip(range(8), [25, 26, 29, 27, 28, 30, 31, 32])))],
+    "Gen 4: HeartGold/SoulSilver": [("Johto", list(zip(range(8), _JOHTO))), ("Kanto", list(zip(range(14, 22), _KANTO)))],
+    "Gen 5: Schwarz/Weiß": [("", list(zip(range(8), [33, 34, 36, 37, 38, 39, 40, 41])))],
+    "Gen 5: Schwarz 2/Weiß 2": [("", list(zip(range(8), [34, 35, 36, 37, 38, 39, 41, 42])))],
+    "Gen 6: X/Y": [("", list(zip(range(8), range(43, 51))))],
+    "Gen 6: Omega Rubin/Alpha Saphir": [("", list(zip(range(8), _HOENN)))],
+    "Gen 8: Schwert/Schild": [("", list(zip(range(8), [51, 52, 53, 54, 56, 57, 59, 60])))],
+    "Gen 9: Karmesin/Purpur": [("", list(zip(range(1, 9), range(70, 78))))],
+}
+
+
+def sidebar_box(name):
+    try:
+        return st.sidebar.container(key=name)
+    except TypeError:
+        return st.sidebar.container()
+
+
+def cap_haken(idx, key, label):
+    """Häkchen für einen Kampf; Zustand kommt immer aus den gespeicherten Daten (Orden-Koffer und Liste bleiben synchron)."""
+    st.session_state[key] = idx in besiegt
+    st.checkbox(label, key=key, disabled=gesperrt, on_change=cap_umschalten,
+                args=(aktueller_run, spiel_schluessel, idx, key))
+
+
+orden_gruppen = ORDEN.get(gewaehlte_gen)
+if orden_gruppen:
+    with sidebar_box("ordenkoffer"):
+        st.markdown("<div class='orden-titel'>Orden-Koffer</div>", unsafe_allow_html=True)
+        for titel, paare in orden_gruppen:
+            if titel:
+                st.markdown(f"<div class='orden-region'>{titel}</div>", unsafe_allow_html=True)
+            for start in range(0, len(paare), 2):
+                for spalte, (cap_idx, orden_nr) in zip(st.columns(2), paare[start:start + 2]):
+                    with spalte:
+                        erledigt = cap_idx in besiegt
+                        treffer = re.search(r"Lv (\d+)", caps[cap_idx]) if cap_idx < len(caps) else None
+                        st.markdown(f"<div class='orden {'an' if erledigt else 'aus'}'><img src='{ORDEN_URL.format(orden_nr)}' alt=''></div>",
+                                    unsafe_allow_html=True)
+                        cap_haken(cap_idx, f"orden_{aktueller_run}_{spiel_schluessel}_{cap_idx}",
+                                  f"Lv {treffer.group(1)}" if treffer else "besiegt")
+
+with st.sidebar.expander("Alle Kämpfe abhaken" if orden_gruppen else "Kämpfe abhaken", expanded=not orden_gruppen):
+    if hat_caps:
+        st.caption("Hake besiegte Kämpfe ab – das wird pro Run gespeichert.")
+    for idx, cap in enumerate(caps):
+        if ist_cap(cap):
+            cap_haken(idx, f"cap_{aktueller_run}_{spiel_schluessel}_{idx}", f"**{cap}**")
+        else:
+            st.markdown(f"*{cap}*")
 
 # ==========================================
 # 3. EINGABE-BEREICH
@@ -694,6 +787,14 @@ if gesperrt:
     eingabe_spalte.info("🔒 Dieser Run ist geschützt. Ansehen geht, zum Eintragen und Bearbeiten links mit dem Passwort entsperren.")
 
 
+def spalten_mittig(spec):
+    """st.columns mit senkrecht zentriertem Inhalt (falls die Streamlit-Version das kann)."""
+    try:
+        return st.columns(spec, vertical_alignment="center")
+    except TypeError:
+        return st.columns(spec)
+
+
 def box_rahmen(name, eltern=None):
     """Container mit Schlüssel (für das GBC-Design); ältere Streamlit-Versionen ohne key bekommen einen normalen."""
     eltern = eltern or st
@@ -764,7 +865,14 @@ def fangchance_bereich(pokemon_name, k):
 
 
 with box_rahmen("eingabebox", eingabe_spalte):
-    route_input = st.text_input("📍 Route", placeholder="z.B. Route 1", key=f"route_{formular_nr}", disabled=gesperrt)
+    route_kopf = spalten_mittig([4, 1])
+    with route_kopf[0]:
+        st.markdown("<div class='feld-titel'>📍 Route</div>", unsafe_allow_html=True)
+    with route_kopf[1]:
+        static_an = st.checkbox("Static", key=f"static_{formular_nr}", disabled=gesperrt,
+                                help="Für Geschenk- und Static-Pokémon: Routen- und Dupes-Prüfung werden übersprungen.")
+    route_input = st.text_input("📍 Route", placeholder="z.B. Route 1", key=f"route_{formular_nr}", disabled=gesperrt,
+                                label_visibility="collapsed")
 
 
     def name_geaendert(run, i, key):
@@ -830,7 +938,8 @@ with box_rahmen("eingabebox", eingabe_spalte):
             return
         with st.spinner('Prüfe Datenbank...'):
             erfolg, nachricht = tracker_logik.link_hinzufuegen(
-                aktueller_run, route_input, p_names[0], p_pokes[0], p_names[1], p_pokes[1], p_names[2], p_pokes[2], status
+                aktueller_run, route_input, p_names[0], p_pokes[0], p_names[1], p_pokes[1], p_names[2], p_pokes[2], status,
+                static=static_an
             )
         if erfolg:
             melde("success", nachricht)
@@ -958,6 +1067,10 @@ def zeilen_rahmen(link_id):
         return st.container(border=True)
 
 
+def static_kennung(eintrag):
+    return " <span class='static-tag'>Static</span>" if eintrag.get("static") else ""
+
+
 def pc_pokemon_html(eintrag, status):
     """Alle Pokémon eines Links in einer Zeile: Sprite, 'Trainer: Pokémon', Typen."""
     teile = []
@@ -1012,7 +1125,7 @@ def zeichne_zeile(eintrag, zeige_checkbox=False):
     with zeilen_rahmen(link_id):
         spalten = spalten_mittig([1.3, 5, 1.1, 0.6] if zeige_checkbox else [1.3, 6.1, 0.6])
         with spalten[0]:
-            st.markdown(f"<div class='pc-tab pc-{status}'>{html.escape(eintrag.get('route', ''))}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='pc-tab pc-{status}'>{html.escape(eintrag.get('route', ''))}{static_kennung(eintrag)}</div>", unsafe_allow_html=True)
         with spalten[1]:
             st.markdown(pc_pokemon_html(eintrag, status), unsafe_allow_html=True)
         if zeige_checkbox:
@@ -1022,14 +1135,6 @@ def zeichne_zeile(eintrag, zeige_checkbox=False):
                 st.checkbox("Im Team", key=team_key, disabled=gesperrt, on_change=team_umschalten, args=(aktueller_run, link_id, team_key))
         with spalten[-1]:
             aktionen_menue(eintrag)
-
-
-def spalten_mittig(spec):
-    """st.columns mit senkrecht zentriertem Inhalt (falls die Streamlit-Version das kann)."""
-    try:
-        return st.columns(spec, vertical_alignment="center")
-    except TypeError:
-        return st.columns(spec)
 
 
 def slot_html(spieler_name, pokemon_name, infos):
@@ -1064,7 +1169,7 @@ def zeichne_teamslot(eintrag):
     with rahmen:
         kopf = spalten_mittig([2, 3, 2])
         with kopf[0]:
-            st.markdown(f"<div class='teamslot-route'>📍 {html.escape(eintrag.get('route', ''))}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='teamslot-route'>📍 {html.escape(eintrag.get('route', ''))}{static_kennung(eintrag)}</div>", unsafe_allow_html=True)
         with kopf[1]:
             with box_rahmen(f"teamaktionen_{link_id}"):
                 zeichne_aktionen(eintrag, True, spalten_mittig([1.7, 1, 1, 1, 1]))
@@ -1074,6 +1179,38 @@ def zeichne_teamslot(eintrag):
                 with st.container(key=f"slot_{link_id}_{idx}"):
                     inhalt = slot_html(*pokes[idx]) if idx < len(pokes) else "<div class='teamslot'></div>"
                     st.markdown(inhalt, unsafe_allow_html=True)
+
+def zeichne_team_analyse(team_links):
+    """Unter dem letzten Team-Link: pro Trainer die Typen, gegen die mehrere seiner Team-Pokémon schwach sind (2×/4×).
+    Spalten wie bei den Team-Slots, damit alles bündig darunter steht."""
+    anzahl = max(2, min(3, max([einst.get("anzahl_spieler", 1)] +
+                               [i + 1 for e in team_links for i in range(3) if e.get(f"p{i+1}")])))
+    typ_reihenfolge = list(TYPEN_REIHENFOLGE)
+    with box_rahmen("teamanalyse"):
+        for idx, spalte in enumerate(st.columns(anzahl)):
+            pokes = [e.get(f"p{idx+1}") for e in team_links if e.get(f"p{idx+1}")]
+            if not pokes:
+                continue
+            trainer = (einst["spieler"][idx] if idx < len(einst["spieler"]) else "") or \
+                      next((e.get(f"n{idx+1}") for e in team_links if e.get(f"n{idx+1}")), "") or f"Spieler {idx+1}"
+            zaehler = {}
+            for p in pokes:
+                for wert, typen in tracker_logik.schwaechen(p, GEN_NR).items():
+                    if wert >= 2:
+                        for t in typen:
+                            zaehler[t] = zaehler.get(t, 0) + 1
+            kritisch = sorted(((n, t) for t, n in zaehler.items() if n >= 2),
+                              key=lambda x: (-x[0], typ_reihenfolge.index(x[1]) if x[1] in typ_reihenfolge else 99))[:4]
+            if kritisch:
+                inhalt = " ".join(f"<span class='ta-eintrag'>{typ_badges([t])}<b>{n}/{len(pokes)}</b></span>" for n, t in kritisch)
+                klasse = "teamanalyse"
+            else:
+                inhalt = "<span class='ta-ok'>Keine gemeinsamen Schwächen</span>"
+                klasse = "teamanalyse ok"
+            with spalte:
+                st.markdown(f"<div class='{klasse}'><span class='warn'>!</span><span class='ta-name'>{html.escape(trainer)}</span>"
+                            f"<span class='ta-liste'>{inhalt}</span></div>", unsafe_allow_html=True)
+
 
 # ==========================================
 # 5. ÜBERSICHT & TABS ZEICHNEN
@@ -1106,6 +1243,8 @@ def zeichne_uebersicht(alle):
         st.markdown(f"**⚔️ Aktives Team ({len(team_links)}/6)**")
         for e in team_links:
             zeichne_teamslot(e)
+        if team_links:
+            zeichne_team_analyse(team_links)
 
         st.divider()
 

@@ -2,7 +2,7 @@ import firebase_admin
 
 # Bei jeder Änderung an dieser Datei erhöhen UND in web_app.py anpassen.
 # So erkennt die Web-App, wenn Streamlit noch eine alte Version im Speicher hat.
-MODUL_VERSION = 12
+MODUL_VERSION = 13
 from firebase_admin import credentials, firestore
 import requests
 import os
@@ -518,14 +518,14 @@ def lade_daten(run_id, fehler_werfen=False):
         return []
 
 
-def link_hinzufuegen(run_id, route, n1, p1, n2, p2, n3, p3, status):
+def link_hinzufuegen(run_id, route, n1, p1, n2, p2, n3, p3, status, static=False):
     """Speichert neuen Link. Führt Routen- und Dupes-Checks durch (außer bei 'Static')."""
     route_raw = route.strip()
     route_suche = route_raw.lower()
 
     # --- DER STATIC JOKER ---
-    # Wenn "static" irgendwo im Routennamen steht, überspringen wir die Checks
-    is_static = "static" in route_suche
+    # Static-Häkchen gesetzt ODER "static" irgendwo im Routennamen -> Checks überspringen
+    is_static = bool(static) or "static" in route_suche
 
     if not is_static:
         # 0. GLEICHES POKÉMON IM SELBEN LINK?
@@ -540,8 +540,8 @@ def link_hinzufuegen(run_id, route, n1, p1, n2, p2, n3, p3, status):
         for doc in alle_links:
             d = doc.to_dict()
 
-            # 1. ROUTEN-CHECK
-            if d.get("route", "").strip().lower() == route_suche:
+            # 1. ROUTEN-CHECK (Static-Links belegen keine Route)
+            if not d.get("static") and d.get("route", "").strip().lower() == route_suche:
                 return False, f"📍 Fehler: Die Route '{route_raw}' existiert bereits! (Schreib 'Static' dazu, um dies zu ignorieren)"
 
             # Sammle ALLE Pokémon aus diesem Link (egal ob aktiv, friedhof, verpasst)
@@ -580,6 +580,8 @@ def link_hinzufuegen(run_id, route, n1, p1, n2, p2, n3, p3, status):
         "status": "aktiv" if status == "Gefangen" else "verpasst",
         "in_team": False
     }
+    if static:
+        neuer_link["static"] = True
 
     try:
         db.collection("links").add(neuer_link)
@@ -602,7 +604,7 @@ def link_bearbeiten(doc_id, alter_eintrag, route, namen, pokes):
         return False, "Die Route darf nicht leer sein."
     if not pokes or not pokes[0]:
         return False, "Spieler 1 braucht ein Pokémon."
-    if "static" not in route_raw.lower():
+    if "static" not in route_raw.lower() and not alter_eintrag.get("static"):
         fehler = doppelte_im_link(pokes)
         if fehler:
             return False, fehler
