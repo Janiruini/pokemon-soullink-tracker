@@ -616,8 +616,8 @@ else:
     titel_spalte = st.container()
 
 with titel_spalte:
-    st.title(f"🔥 Pokémon Soul-Link Tracker")
-    cap_hinweis = f" · 🎯 Nächster Level-Cap: **{naechster_cap}**" if naechster_cap else ""
+    st.title("Pokémon Soul-Link Tracker")
+    cap_hinweis = f" · Nächster Level-Cap: **{naechster_cap}**" if naechster_cap else ""
     st.caption(f"Aktueller Spielstand: **{aktueller_run}**{cap_hinweis}")
 
 # Kleine Typ-Suche oben rechts (z.B. für Gegner im Kampf) – nutzt die lokalen Pokémon-Daten
