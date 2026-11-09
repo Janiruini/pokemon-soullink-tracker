@@ -56,8 +56,8 @@ st.markdown("""
                       background: #ffffff; display: flex; align-items: center; justify-content: center; overflow: hidden; }
     .teamslot .ring img { width: 60px; height: 60px; image-rendering: pixelated; }
     .teamslot .ring span { font-size: 24px; }
-    .teamslot .info { min-width: 0; flex: 0 1 auto; }
-    .teamslot .schwach { display: flex; align-items: center; gap: 8px; margin-left: 28px; line-height: 1.8; max-width: 65%; }
+    .teamslot .info { min-width: 0; flex: 1; }
+    .teamslot .schwach { display: flex; align-items: center; gap: 8px; margin-left: auto; text-align: right; line-height: 1.8; max-width: 60%; }
     .teamslot .schwach .warn { flex: 0 0 22px; width: 22px; height: 22px; border-radius: 50%; background: #D32F2F; color: #FFFFFF;
                                font-weight: 800; font-size: 14px; line-height: 22px; text-align: center; }
     .teamslot .schwach b { font-size: 11px; margin-right: 2px; }
