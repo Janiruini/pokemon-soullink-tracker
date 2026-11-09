@@ -30,6 +30,10 @@ st.markdown("""
     <style>
     div[data-testid="stVerticalBlock"] { gap: 0.5rem; }
 
+    /* Aktionsleiste über den Team-Slots: kleinere Buttons */
+    [class*="st-key-teamaktionen_"] button { min-height: 30px !important; padding: 2px 8px !important; }
+    [class*="st-key-teamaktionen_"] [data-testid="stCheckbox"] { justify-content: center; }
+
     /* Kompakte Listenzeilen (PC-Box, Friedhof, Verpasst) */
     [class*="st-key-zeile_"] { padding: 6px 10px !important; }
     .pc-tab { font-weight: 600; padding: 8px 10px; border-radius: 4px; background: rgba(128, 128, 128, 0.18);
@@ -988,9 +992,8 @@ def slot_html(spieler_name, pokemon_name, infos):
 
 
 def zeichne_teamslot(eintrag):
-    """Link im aktiven Team im Party-Slot-Design: Kopfzeile mit Route + "Im Team",
-    darunter ein Slot pro Trainer. Bei bis zu 2 Trainern sitzen die Buttons im rechten Slot,
-    bei 3 Trainern kompakt in der Kopfzeile."""
+    """Link im aktiven Team im Party-Slot-Design: Kopfzeile mit Route links und den Aktionen
+    (Im Team, Bearbeiten, Verpasst, Friedhof, Löschen) mittig über den Pokémon; darunter ein Slot pro Trainer."""
     link_id = eintrag["id"]
     try:
         rahmen = st.container(key=f"teamslot_{link_id}")
@@ -999,29 +1002,20 @@ def zeichne_teamslot(eintrag):
         return
     pokes = pokemon_des_links(eintrag)
     anzahl = max(2, min(3, max(len(pokes), einst.get("anzahl_spieler", 1))))
-    buttons_im_slot = anzahl <= 2
 
     with rahmen:
-        if buttons_im_slot:
-            kopf = spalten_mittig([5, 2])
-        else:
-            kopf = spalten_mittig([4, 2, 1, 1, 1, 1])
+        kopf = spalten_mittig([2, 3, 2])
         with kopf[0]:
             st.markdown(f"<div class='teamslot-route'>📍 {html.escape(eintrag.get('route', ''))}</div>", unsafe_allow_html=True)
+        with kopf[1]:
+            with box_rahmen(f"teamaktionen_{link_id}"):
+                zeichne_aktionen(eintrag, True, spalten_mittig([1.7, 1, 1, 1, 1]))
 
-        aktions_spalten = list(kopf[1:])
         for idx, spalte in enumerate(st.columns(anzahl)):
             with spalte:
                 with st.container(key=f"slot_{link_id}_{idx}"):
                     inhalt = slot_html(*pokes[idx]) if idx < len(pokes) else "<div class='teamslot'></div>"
-                    if buttons_im_slot and idx == anzahl - 1:
-                        innen = spalten_mittig([4, 1, 1, 1, 1])
-                        with innen[0]:
-                            st.markdown(inhalt, unsafe_allow_html=True)
-                        aktions_spalten = [kopf[1]] + list(innen[1:])
-                    else:
-                        st.markdown(inhalt, unsafe_allow_html=True)
-        zeichne_aktionen(eintrag, True, aktions_spalten)
+                    st.markdown(inhalt, unsafe_allow_html=True)
 
 # ==========================================
 # 5. ÜBERSICHT & TABS ZEICHNEN
