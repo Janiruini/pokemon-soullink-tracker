@@ -176,13 +176,16 @@ button:disabled { opacity: 0.45 !important; }
 .st-key-eingabebox { background: var(--gbc-box) !important; border: 3px solid var(--gbc-rand) !important; border-radius: 6px !important;
     box-shadow: inset 0 0 0 2px var(--gbc-box), inset 0 0 0 4px var(--gbc-shell) !important; padding: 14px 16px !important; }
 /* Hinweisboxen (z.B. "Bearbeiten freigeschaltet", "Nächster Cap") als GBC-Textbox */
-[data-testid="stAlert"], [data-testid="stAlertContainer"] { background: var(--gbc-box) !important; border: 3px solid var(--gbc-rand) !important;
-    border-radius: 6px !important; box-shadow: inset 0 0 0 2px var(--gbc-box), inset 0 0 0 4px var(--gbc-shell) !important; }
+/* nur EIN Rahmen: äußere Hülle unsichtbar, innerer Kasten im GBC-Stil (falls es die Hülle gibt) */
+[data-testid="stAlert"] { background: transparent !important; border: none !important; box-shadow: none !important; padding: 0 !important; }
+[data-testid="stAlert"]:not(:has([data-testid="stAlertContainer"])), [data-testid="stAlert"] [data-testid="stAlertContainer"] {
+    background: var(--gbc-box) !important; border: 3px solid var(--gbc-rand) !important; border-radius: 6px !important;
+    box-shadow: inset 0 0 0 2px var(--gbc-box), inset 0 0 0 4px var(--gbc-shell) !important; padding: 8px 12px !important; }
 [data-testid="stAlert"] *, [data-testid="stAlertContainer"] * { background: transparent !important; color: var(--gbc-text) !important; }
 [data-testid="stAlert"]:has([data-testid="stAlertContentSuccess"]) p { color: #9FE0A3 !important; }
 [data-testid="stAlert"]:has([data-testid="stAlertContentWarning"]) p, [data-testid="stAlert"]:has([data-testid="stAlertContentInfo"]) p { color: var(--gbc-acc) !important; }
 [data-testid="stAlert"]:has([data-testid="stAlertContentError"]) p { color: #FF9A8F !important; }
-[data-testid="stAlert"]:has([data-testid="stAlertContentError"]) { box-shadow: inset 0 0 0 2px var(--gbc-box), inset 0 0 0 4px #C0392B !important; }
+[data-testid="stAlert"]:has([data-testid="stAlertContentError"]) [data-testid="stAlertContainer"] { box-shadow: inset 0 0 0 2px var(--gbc-box), inset 0 0 0 4px #C0392B !important; }
 /* Boxen im Gold/Silber-Stil: dicker dunkler Rand + feine Innenlinie in Gehäusefarbe */
 [class*="st-key-zeile_"] { background: var(--gbc-box) !important; border: 2px solid var(--gbc-rand) !important; border-radius: 4px !important;
     box-shadow: none !important; }
@@ -567,9 +570,9 @@ naechster_cap = next((c for i, c in enumerate(caps) if ist_cap(c) and i not in b
 hat_caps = any(ist_cap(c) for c in caps)
 
 if naechster_cap:
-    st.sidebar.success(f"🎯 Nächster Cap: **{naechster_cap}**")
+    st.sidebar.success(f"Nächster Cap: **{naechster_cap}**")
 elif hat_caps:
-    st.sidebar.success("🏆 Alle Caps geschafft!")
+    st.sidebar.success("Alle Caps geschafft!")
 if hat_caps:
     st.sidebar.caption("Hake besiegte Kämpfe ab – das wird pro Run gespeichert.")
 
