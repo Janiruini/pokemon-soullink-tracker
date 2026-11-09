@@ -30,6 +30,17 @@ st.markdown("""
     <style>
     div[data-testid="stVerticalBlock"] { gap: 0.5rem; }
 
+    /* Kompakte Listenzeilen (PC-Box, Friedhof, Verpasst) */
+    [class*="st-key-zeile_"] { padding: 6px 10px !important; }
+    .pc-tab { font-weight: 600; padding: 8px 10px; border-radius: 4px; background: rgba(128, 128, 128, 0.18);
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 1rem; }
+    .pc-pokes { display: flex; flex-wrap: wrap; gap: 4px 22px; align-items: center; margin-bottom: 1rem; }
+    .pc-poke { display: flex; gap: 6px; align-items: center; white-space: nowrap; }
+    .pc-poke img { width: 36px; height: 36px; image-rendering: pixelated; }
+    .pc-poke .pc-leer { width: 36px; text-align: center; font-size: 20px; }
+    .pc-pokes.pc-friedhof img { filter: grayscale(1); opacity: 0.7; }
+    .pc-pokes.pc-verpasst img { opacity: 0.55; }
+
     /* Party-Slot-Design für Links im aktiven Team */
     [class*="st-key-teamslot_"] { background: #10263F; border: 1px solid #23476F; border-radius: 16px; padding: 6px 12px 12px 12px; }
     [class*="st-key-teamslot_"] [data-testid="stCheckbox"] p { color: #E6F1FB; }
@@ -160,7 +171,13 @@ button:disabled { opacity: 0.45 !important; }
 [data-testid="stAlert"]:has([data-testid="stAlertContentError"]) p { color: #FF9A8F !important; }
 [data-testid="stAlert"]:has([data-testid="stAlertContentError"]) { box-shadow: inset 0 0 0 2px var(--gbc-box), inset 0 0 0 4px #C0392B !important; }
 /* Boxen im Gold/Silber-Stil: dicker dunkler Rand + feine Innenlinie in Gehäusefarbe */
-[class*="st-key-zeile_"], [data-testid="stExpander"] details, [data-testid="stMetric"] {
+[class*="st-key-zeile_"] { background: var(--gbc-box) !important; border: 2px solid var(--gbc-rand) !important; border-radius: 4px !important;
+    box-shadow: none !important; }
+.pc-tab { background: var(--gbc-shell); color: #FFFFFF; font-family: 'Press Start 2P', monospace; font-size: 0.55rem; line-height: 1.8; font-weight: 400; }
+.pc-tab.pc-friedhof { background: #4A5163; color: #D3D1C7; }
+.pc-tab.pc-verpasst { background: #323848; color: var(--gbc-leise); }
+.pc-poke b { color: var(--gbc-leise); font-weight: 400; }
+[data-testid="stExpander"] details, [data-testid="stMetric"] {
     background: var(--gbc-box) !important; border: 3px solid var(--gbc-rand) !important; border-radius: 6px !important;
     box-shadow: inset 0 0 0 2px var(--gbc-box), inset 0 0 0 4px var(--gbc-shell) !important; }
 [data-testid="stMetric"] { padding: 8px 12px; }
@@ -886,26 +903,70 @@ def zeilen_rahmen(link_id):
         return st.container(border=True)
 
 
-def zeichne_zeile(eintrag, zeige_checkbox=False):
-    with zeilen_rahmen(eintrag["id"]):
-        top_cols = st.columns([4, 2, 1, 1, 1, 1])
-        with top_cols[0]:
-            st.markdown(f"**📍 {eintrag.get('route', '')}**")
-        zeichne_aktionen(eintrag, zeige_checkbox, top_cols[1:])
+def pc_pokemon_html(eintrag, status):
+    """Alle Pokémon eines Links in einer Zeile: Sprite, 'Trainer: Pokémon', Typen."""
+    teile = []
+    for spieler_name, pokemon_name, infos in pokemon_des_links(eintrag):
+        bild_pfad = infos.get("bild")
+        bild = f"<img src='{html.escape(bild_pfad)}' alt=''>" if bild_pfad else "<span class='pc-leer'>❓</span>"
+        teile.append(f"<div class='pc-poke'>{bild}<span><b>{html.escape(spieler_name)}:</b> {html.escape(pokemon_name)}</span>"
+                     f"{typ_badges(infos.get('typen') or ['Unbekannt'])}</div>")
+    return f"<div class='pc-pokes pc-{status}'>{''.join(teile)}</div>"
 
-        karten_cols = st.columns(3)
-        for idx, (spieler_name, pokemon_name, infos) in enumerate(pokemon_des_links(eintrag)):
-            with karten_cols[idx]:
-                sub_col1, sub_col2 = st.columns([1, 4])
-                with sub_col1:
-                    bild_pfad = infos.get("bild")
-                    if bild_pfad:
-                        st.image(bild_pfad, width=45)
-                    else:
-                        st.markdown("<h4>❓</h4>", unsafe_allow_html=True)
-                with sub_col2:
-                    st.markdown(f"<div style='line-height: 1.1; margin-bottom: 2px;'><b>{spieler_name}:</b> {pokemon_name}</div>", unsafe_allow_html=True)
-                    st.markdown(typ_badges(infos.get("typen") or ["Unbekannt"]), unsafe_allow_html=True)
+
+def aktionen_menue(eintrag):
+    """Kompaktes Dropdown mit allen Aktionen eines Links (statt einzelner Buttons)."""
+    link_id = eintrag["id"]
+    status = eintrag.get("status", "aktiv")
+    with st.popover("🛠️", help="Aktionen", disabled=gesperrt):
+        if status == "aktiv":
+            if st.button("🏃 Verpasst", key=f"v_{link_id}", disabled=gesperrt):
+                tracker_logik.status_aendern(link_id, "verpasst"); st.rerun()
+        else:
+            if st.button("♻️ Wieder aktiv", key=f"a_{link_id}", disabled=gesperrt):
+                tracker_logik.status_aendern(link_id, "aktiv"); st.rerun()
+        if status != "friedhof":
+            if st.button("💀 Friedhof", key=f"f_{link_id}", disabled=gesperrt):
+                tracker_logik.status_aendern(link_id, "friedhof"); st.rerun()
+        else:
+            if st.button("🏃 Verpasst", key=f"v2_{link_id}", disabled=gesperrt):
+                tracker_logik.status_aendern(link_id, "verpasst"); st.rerun()
+        with st.expander("✏️ Bearbeiten"):
+            bearbeiten_formular(eintrag)
+        frage_key = f"loeschfrage_{link_id}"
+        if not st.session_state.get(frage_key):
+            if st.button("🗑️ Löschen", key=f"dfrage_{link_id}", disabled=gesperrt):
+                st.session_state[frage_key] = True
+                st.rerun()
+        else:
+            st.markdown(f"**{html.escape(eintrag.get('route', ''))}** wirklich endgültig löschen?")
+            if st.button("Ja, löschen", key=f"d_{link_id}", type="primary", disabled=gesperrt):
+                st.session_state.pop(frage_key, None)
+                tracker_logik.link_loeschen(link_id)
+                melde("success", f"Link '{eintrag.get('route', '')}' gelöscht.")
+                st.rerun()
+            if st.button("Abbrechen", key=f"dnein_{link_id}"):
+                st.session_state.pop(frage_key, None)
+                st.rerun()
+
+
+def zeichne_zeile(eintrag, zeige_checkbox=False):
+    """Kompakte Listenzeile (PC-Box, Friedhof, Verpasst): Routen-Reiter | Pokémon | Im Team | Aktionen."""
+    link_id = eintrag["id"]
+    status = eintrag.get("status", "aktiv")
+    with zeilen_rahmen(link_id):
+        spalten = spalten_mittig([1.3, 5, 1.1, 0.6] if zeige_checkbox else [1.3, 6.1, 0.6])
+        with spalten[0]:
+            st.markdown(f"<div class='pc-tab pc-{status}'>{html.escape(eintrag.get('route', ''))}</div>", unsafe_allow_html=True)
+        with spalten[1]:
+            st.markdown(pc_pokemon_html(eintrag, status), unsafe_allow_html=True)
+        if zeige_checkbox:
+            with spalten[2]:
+                team_key = f"team_{link_id}"
+                st.session_state[team_key] = bool(eintrag.get("in_team", False))
+                st.checkbox("Im Team", key=team_key, disabled=gesperrt, on_change=team_umschalten, args=(aktueller_run, link_id, team_key))
+        with spalten[-1]:
+            aktionen_menue(eintrag)
 
 
 def spalten_mittig(spec):
