@@ -56,7 +56,11 @@ st.markdown("""
                       background: #ffffff; display: flex; align-items: center; justify-content: center; overflow: hidden; }
     .teamslot .ring img { width: 60px; height: 60px; image-rendering: pixelated; }
     .teamslot .ring span { font-size: 24px; }
-    .teamslot .info { min-width: 0; }
+    .teamslot .info { min-width: 0; flex: 1; }
+    .teamslot .schwach { text-align: right; line-height: 1.8; max-width: 55%; }
+    .teamslot .schwach b { font-size: 11px; margin-right: 2px; }
+    .teamslot .schwach .stufe-4 { color: #A32D2D; }
+    .teamslot .schwach .stufe-2 { color: #854F0B; }
     .teamslot .trainer { font-size: 12px; color: #185FA5; line-height: 1.2; }
     .teamslot .pname { font-weight: 600; color: #042C53; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     </style>
@@ -986,9 +990,15 @@ def slot_html(spieler_name, pokemon_name, infos):
     ring_farbe = TYP_FARBEN.get(typen[0], "#68A090")
     bild_pfad = infos.get("bild")
     bild = f"<img src='{html.escape(bild_pfad)}' alt=''>" if bild_pfad else "<span>❓</span>"
+    # Gefährliche Schwächen (4× und 2×) rechts im Slot, passend zum Spiel der Level-Caps
+    gruppen = tracker_logik.schwaechen(pokemon_name, GEN_NR)
+    warnung = "".join(
+        f"<div><b class='stufe-{int(wert)}'>{text}</b> {typ_badges(gruppen[wert])}</div>"
+        for wert, text in ((4.0, "4×"), (2.0, "2×")) if gruppen.get(wert))
+    schwach = f"<div class='schwach'>{warnung}</div>" if warnung else ""
     return (f"<div class='teamslot'><div class='ring' style='border-color:{ring_farbe};'>{bild}</div>"
             f"<div class='info'><div class='trainer'>{html.escape(spieler_name)}</div>"
-            f"<div class='pname'>{html.escape(pokemon_name)}</div>{typ_badges(typen)}</div></div>")
+            f"<div class='pname'>{html.escape(pokemon_name)}</div>{typ_badges(typen)}</div>{schwach}</div>")
 
 
 def zeichne_teamslot(eintrag):
