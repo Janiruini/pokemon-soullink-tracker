@@ -2,7 +2,7 @@ import firebase_admin
 
 # Bei jeder Änderung an dieser Datei erhöhen UND in web_app.py anpassen.
 # So erkennt die Web-App, wenn Streamlit noch eine alte Version im Speicher hat.
-MODUL_VERSION = 13
+MODUL_VERSION = 14
 from firebase_admin import credentials, firestore
 import requests
 import os
@@ -494,10 +494,11 @@ def wuerfe_fuer(chance, ziel=0.9):
 NACH_SCHREIBEN = []
 
 
-def _geschrieben():
+def _geschrieben(art=None):
+    """art: "links" (nur Einträge geändert), "einstellungen" (nur Run-Einstellungen) oder None (alles)."""
     for rueckruf in list(NACH_SCHREIBEN):
         try:
-            rueckruf()
+            rueckruf(art)
         except Exception as e:
             print("Zwischenspeicher konnte nicht geleert werden:", e)
 
@@ -585,7 +586,7 @@ def link_hinzufuegen(run_id, route, n1, p1, n2, p2, n3, p3, status, static=False
 
     try:
         db.collection("links").add(neuer_link)
-        _geschrieben()
+        _geschrieben("links")
         # Run im Run-Verzeichnis sicherstellen (falls er z.B. nur über die Adresse geöffnet wurde)
         try:
             db.collection("runs").document(_run_doc_id(run_id)).set({"run_id": run_id}, merge=True)
@@ -621,7 +622,7 @@ def link_bearbeiten(doc_id, alter_eintrag, route, namen, pokes):
             update[f"i{nr}"] = hole_pokemon_infos(poke)
     try:
         db.collection("links").document(doc_id).update(update)
-        _geschrieben()
+        _geschrieben("links")
         return True, "Änderung gespeichert!"
     except Exception as e:
         return False, f"Cloud-Fehler: {e}"
@@ -632,7 +633,7 @@ def status_aendern(doc_id, neuer_status):
     try:
         db.collection("links").document(doc_id).update({"status": neuer_status, "in_team": False})
     finally:
-        _geschrieben()
+        _geschrieben("links")
 
 
 def team_status_aendern(run_id, doc_id, im_team):
@@ -644,7 +645,7 @@ def team_status_aendern(run_id, doc_id, im_team):
     try:
         db.collection("links").document(doc_id).update({"in_team": im_team})
     finally:
-        _geschrieben()
+        _geschrieben("links")
     return True, "OK"
 
 
@@ -653,7 +654,7 @@ def link_loeschen(doc_id):
     try:
         db.collection("links").document(doc_id).delete()
     finally:
-        _geschrieben()
+        _geschrieben("links")
 
 # ==========================================
 # 4. RUNS & RUN-EINSTELLUNGEN
@@ -795,7 +796,7 @@ def speichere_run_einstellungen(run_id, **felder):
         daten = {"run_id": run_id}
         daten.update(felder)
         db.collection("runs").document(_run_doc_id(run_id)).set(daten, merge=True)
-        _geschrieben()
+        _geschrieben("einstellungen")
         return True
     except Exception as e:
         print("Fehler beim Speichern der Run-Einstellungen:", e)

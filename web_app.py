@@ -7,7 +7,7 @@ import html
 
 # Streamlit lädt nach einem Update manchmal nur web_app.py neu, aber nicht tracker_logik.py.
 # Passt die Version nicht, wird die Logik-Datei hier frisch geladen.
-ERWARTETE_LOGIK_VERSION = 13
+ERWARTETE_LOGIK_VERSION = 14
 if getattr(tracker_logik, "MODUL_VERSION", 0) != ERWARTETE_LOGIK_VERSION:
     tracker_logik = importlib.reload(tracker_logik)
 
@@ -272,9 +272,12 @@ def einstellungen_zwischenspeicher(run_id):
     return tracker_logik.lade_run_einstellungen(run_id, fehler_werfen=True)
 
 
-def zwischenspeicher_leeren():
-    daten_zwischenspeicher.clear()
-    einstellungen_zwischenspeicher.clear()
+def zwischenspeicher_leeren(art=None):
+    """Nur das neu laden, was sich geändert hat (z.B. Orden abhaken lädt nicht alle Links neu)."""
+    if art in (None, "links"):
+        daten_zwischenspeicher.clear()
+    if art in (None, "einstellungen"):
+        einstellungen_zwischenspeicher.clear()
 
 
 tracker_logik.NACH_SCHREIBEN[:] = [zwischenspeicher_leeren]
@@ -679,10 +682,14 @@ if orden_gruppen:
                         cap_haken(cap_idx, f"orden_{aktueller_run}_{spiel_schluessel}_{cap_idx}",
                                   f"Lv {treffer.group(1)}" if treffer else "besiegt")
 
-with st.sidebar.expander("Alle Kämpfe abhaken" if orden_gruppen else "Kämpfe abhaken", expanded=not orden_gruppen):
+# Die Arenen stehen schon im Orden-Koffer -> in der Liste nur noch Top 4, Champ & Co.
+im_koffer = {cap_idx for _, paare in (orden_gruppen or []) for cap_idx, _ in paare}
+with st.sidebar.expander("Weitere Kämpfe abhaken" if orden_gruppen else "Kämpfe abhaken", expanded=not orden_gruppen):
     if hat_caps:
         st.caption("Hake besiegte Kämpfe ab – das wird pro Run gespeichert.")
     for idx, cap in enumerate(caps):
+        if idx in im_koffer:
+            continue
         if ist_cap(cap):
             cap_haken(idx, f"cap_{aktueller_run}_{spiel_schluessel}_{idx}", f"**{cap}**")
         else:
