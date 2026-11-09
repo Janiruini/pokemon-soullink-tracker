@@ -56,8 +56,10 @@ st.markdown("""
                       background: #ffffff; display: flex; align-items: center; justify-content: center; overflow: hidden; }
     .teamslot .ring img { width: 60px; height: 60px; image-rendering: pixelated; }
     .teamslot .ring span { font-size: 24px; }
-    .teamslot .info { min-width: 0; flex: 1; }
-    .teamslot .schwach { text-align: right; line-height: 1.8; max-width: 55%; }
+    .teamslot .info { min-width: 0; flex: 0 1 auto; }
+    .teamslot .schwach { display: flex; align-items: center; gap: 8px; margin-left: 28px; line-height: 1.8; max-width: 65%; }
+    .teamslot .schwach .warn { flex: 0 0 22px; width: 22px; height: 22px; border-radius: 50%; background: #D32F2F; color: #FFFFFF;
+                               font-weight: 800; font-size: 14px; line-height: 22px; text-align: center; }
     .teamslot .schwach b { font-size: 11px; margin-right: 2px; }
     .teamslot .schwach .stufe-4 { color: #A32D2D; }
     .teamslot .schwach .stufe-2 { color: #854F0B; }
@@ -1034,7 +1036,8 @@ def slot_html(spieler_name, pokemon_name, infos):
     warnung = "".join(
         f"<div><b class='stufe-{int(wert)}'>{text}</b> {typ_badges(gruppen[wert])}</div>"
         for wert, text in ((4.0, "4×"), (2.0, "2×")) if gruppen.get(wert))
-    schwach = f"<div class='schwach'>{warnung}</div>" if warnung else ""
+    schwach = (f"<div class='schwach'><span class='warn' title='Schwächen'>!</span><div>{warnung}</div></div>"
+               if warnung else "")
     return (f"<div class='teamslot'><div class='ring' style='border-color:{ring_farbe};'>{bild}</div>"
             f"<div class='info'><div class='trainer'>{html.escape(spieler_name)}</div>"
             f"<div class='pname'>{html.escape(pokemon_name)}</div>{typ_badges(typen)}</div>{schwach}</div>")
