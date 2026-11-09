@@ -59,7 +59,7 @@ GBC_CSS = """
 .stApp p, .stApp li, .stApp label, [data-testid="stWidgetLabel"] p, [data-testid="stMarkdownContainer"] { color: var(--gbc-text); }
 /* Gehäuse-Rahmen um die ganze Seite (liegt nur obendrauf, verschiebt nichts) */
 .stApp::after { content: ""; position: fixed; inset: 0; border: 8px solid var(--gbc-shell); border-radius: 14px 14px 44px 14px;
-                pointer-events: none; z-index: 999990; }
+                pointer-events: none; z-index: 1000100; }
 /* Überschriften in Pixel-Schrift */
 .stApp h1 { font-family: 'Press Start 2P', monospace !important; font-size: 1.35rem !important; line-height: 1.5 !important; color: var(--gbc-acc) !important; }
 [data-testid="stSidebar"] h1 { font-size: 0.8rem !important; }
@@ -67,7 +67,7 @@ GBC_CSS = """
 [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p { color: var(--gbc-leise) !important; }
 .stApp hr { border-color: #2E3443 !important; }
 /* Seitenleiste */
-[data-testid="stSidebar"] { background: #10131B !important; border-right: 3px solid var(--gbc-shell); }
+[data-testid="stSidebar"] { background: #10131B !important; border-right: 3px solid var(--gbc-rand) !important; }
 [data-testid="stSidebar"] p, [data-testid="stSidebar"] label { color: var(--gbc-text) !important; }
 /* Eingabefelder, Auswahllisten, Zahlenfelder: GBC-Textfeld (dunkler Rand + goldene Innenlinie) */
 [data-baseweb="input"], [data-baseweb="select"] > div, [data-baseweb="textarea"] {
@@ -111,6 +111,46 @@ button:disabled { opacity: 0.45 !important; }
 [data-testid="stRadio"] label > div:first-child { border-color: var(--gbc-feldrand) !important; }
 [data-testid="stRadio"] label:has(input:checked) > div:first-child { background-color: var(--gbc-shell) !important; border-color: var(--gbc-acc) !important; }
 [data-testid="stSlider"] [data-baseweb="slider"] { filter: hue-rotate(38deg) saturate(0.85); }
+/* Neuere Streamlit-Versionen: Eingabefelder, Auswahl- und Zahlenfelder */
+[data-testid="stTextInputRootElement"], [data-testid="stNumberInputContainer"], [data-testid="stSelectbox"] [role="group"] {
+    background: var(--gbc-feld) !important; border: 3px solid var(--gbc-rand) !important; border-radius: 6px !important;
+    box-shadow: inset 0 0 0 2px rgba(176, 125, 18, 0.55) !important; }
+[data-testid="stTextInputRootElement"]:focus-within, [data-testid="stNumberInputContainer"]:focus-within,
+[data-testid="stSelectbox"] [role="group"]:focus-within { box-shadow: inset 0 0 0 2px var(--gbc-acc) !important; }
+[data-testid="stTextInputField"], [data-testid="stNumberInputField"], [data-testid="stSelectbox"] input {
+    color: var(--gbc-text) !important; background: transparent !important; }
+[data-testid="stTextInputField"]::placeholder, [data-testid="stNumberInputField"]::placeholder, [data-testid="stSelectbox"] input::placeholder {
+    color: var(--gbc-leise) !important; }
+[data-testid="stSelectbox"] button, [data-testid="stSelectbox"] button svg { color: var(--gbc-acc) !important; background: transparent !important; }
+[data-testid="stNumberInputStepDown"], [data-testid="stNumberInputStepUp"] { background: var(--gbc-box) !important; color: var(--gbc-acc) !important; }
+[data-testid="stSelectboxVirtualDropdown"], [data-testid="stSelectboxVirtualDropdown"] [role="listbox"] {
+    background: var(--gbc-box) !important; border: 3px solid var(--gbc-rand) !important; border-radius: 6px !important; }
+[data-testid="stSelectboxVirtualDropdown"] [role="option"] { color: var(--gbc-text) !important; background: transparent !important; }
+[data-testid="stSelectboxVirtualDropdown"] [role="option"][data-focused], [data-testid="stSelectboxVirtualDropdown"] [role="option"]:hover,
+[data-testid="stSelectboxVirtualDropdown"] [role="option"][data-selected] { background: #3A4256 !important; color: var(--gbc-acc) !important; }
+/* Häkchen (z.B. Level-Caps, "Im Team") */
+[data-testid="stCheckbox"] label > div:not(:has([data-testid="stMarkdownContainer"])):not(:has(input)):not(:has(> div)) {
+    background-color: var(--gbc-feld) !important; border: 2px solid var(--gbc-feldrand) !important; border-radius: 3px !important; }
+[data-testid="stCheckbox"] label[data-selected] > div:not(:has([data-testid="stMarkdownContainer"])):not(:has(input)):not(:has(> div)),
+[data-testid="stCheckbox"] label:has(input:checked) > div:not(:has([data-testid="stMarkdownContainer"])):not(:has(input)):not(:has(> div)) {
+    background-color: var(--gbc-shell) !important; border-color: var(--gbc-acc) !important; }
+[data-testid="stCheckbox"] label svg { stroke: #FFFFFF !important; color: #FFFFFF !important; }
+/* Schalter (z.B. "GBC-Design") */
+[data-testid="stCheckbox"] label > div:has(> div):not(:has([data-testid="stMarkdownContainer"])):not(:has(input)) {
+    background-color: var(--gbc-feldrand) !important; }
+[data-testid="stCheckbox"] label[data-selected] > div:has(> div):not(:has([data-testid="stMarkdownContainer"])):not(:has(input)),
+[data-testid="stCheckbox"] label:has(input:checked) > div:has(> div):not(:has([data-testid="stMarkdownContainer"])):not(:has(input)) {
+    background-color: var(--gbc-shell) !important; }
+/* Auswahlpunkte (Gefangen / Verpasst) */
+[data-testid="stRadioOption"] div:has(> [data-testid="stMarkdownContainer"]) > div:first-child {
+    background-color: var(--gbc-feld) !important; border-color: var(--gbc-feldrand) !important; }
+[data-testid="stRadioOption"][data-selected] div:has(> [data-testid="stMarkdownContainer"]) > div:first-child,
+[data-testid="stRadioOption"]:has(input:checked) div:has(> [data-testid="stMarkdownContainer"]) > div:first-child {
+    background-color: var(--gbc-shell) !important; border-color: var(--gbc-acc) !important; }
+[data-testid="stSlider"] { filter: hue-rotate(38deg) saturate(0.85); }
+/* Eingabebereich oben als eine große GBC-Box */
+.st-key-eingabebox { background: var(--gbc-box) !important; border: 3px solid var(--gbc-rand) !important; border-radius: 6px !important;
+    box-shadow: inset 0 0 0 2px var(--gbc-box), inset 0 0 0 4px var(--gbc-shell) !important; padding: 14px 16px !important; }
 /* Hinweisboxen (z.B. "Bearbeiten freigeschaltet", "Nächster Cap") als GBC-Textbox */
 [data-testid="stAlert"], [data-testid="stAlertContainer"] { background: var(--gbc-box) !important; border: 3px solid var(--gbc-rand) !important;
     border-radius: 6px !important; box-shadow: inset 0 0 0 2px var(--gbc-box), inset 0 0 0 4px var(--gbc-shell) !important; }
@@ -587,96 +627,106 @@ formular_nr = st.session_state.setdefault("formular_nr", 0)
 if gesperrt:
     st.info("🔒 Dieser Run ist geschützt. Ansehen geht, zum Eintragen und Bearbeiten links mit dem Passwort entsperren.")
 
-col1, col2 = st.columns([1, 1])
-with col1:
-    route_input = st.text_input("📍 Route", placeholder="z.B. Route 1", key=f"route_{formular_nr}", disabled=gesperrt)
-with col2:
-    status_input = st.radio("Status:", ["Gefangen", "Verpasst"], horizontal=True, disabled=gesperrt)
-
-anzahl_key = f"anzahl_{aktueller_run}"
-if anzahl_key not in st.session_state:
-    st.session_state[anzahl_key] = einst["anzahl_spieler"]
-anzahl_spieler = st.session_state[anzahl_key]
+def box_rahmen(name):
+    """Container mit Schlüssel (für das GBC-Design); ältere Streamlit-Versionen ohne key bekommen einen normalen."""
+    try:
+        return st.container(key=name)
+    except TypeError:
+        return st.container()
 
 
-def name_geaendert(run, i, key):
-    einst["spieler"][i] = st.session_state[key]
-    tracker_logik.speichere_run_einstellungen(run, spieler=list(einst["spieler"]))
+with box_rahmen("eingabebox"):
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        route_input = st.text_input("📍 Route", placeholder="z.B. Route 1", key=f"route_{formular_nr}", disabled=gesperrt)
+    with col2:
+        status_input = st.radio("Status:", ["Gefangen", "Verpasst"], horizontal=True, disabled=gesperrt)
+
+    anzahl_key = f"anzahl_{aktueller_run}"
+    if anzahl_key not in st.session_state:
+        st.session_state[anzahl_key] = einst["anzahl_spieler"]
+    anzahl_spieler = st.session_state[anzahl_key]
 
 
-vergeben = tracker_logik.vergebene_pokemon(daten)
+    def name_geaendert(run, i, key):
+        einst["spieler"][i] = st.session_state[key]
+        tracker_logik.speichere_run_einstellungen(run, spieler=list(einst["spieler"]))
 
 
-def pokemon_label(name):
-    """Markiert in der Auswahl Pokémon, die wegen der Dupes Clause schon vergeben sind."""
-    grund = vergeben.get(name.lower())
-    if not grund:
-        return name
-    if grund.lower() == name.lower():
-        return f"{name}  ⛔ schon gehabt"
-    return f"{name}  ⛔ Reihe von {grund}"
+    vergeben = tracker_logik.vergebene_pokemon(daten)
 
 
-def pokemon_label_fuer(i):
-    """Wie pokemon_label, markiert zusätzlich, was ein anderer Trainer in diesem Link schon gewählt hat."""
-    andere = [st.session_state.get(f"p_{j}_{formular_nr}") for j in range(anzahl_spieler) if j != i]
-    andere = [a for a in andere if a]
-
-    def label(name):
-        if any(tracker_logik.gleiche_reihe(a, name) for a in andere):
-            return f"{name}  ⛔ schon in diesem Link"
-        return pokemon_label(name)
-    return label
+    def pokemon_label(name):
+        """Markiert in der Auswahl Pokémon, die wegen der Dupes Clause schon vergeben sind."""
+        grund = vergeben.get(name.lower())
+        if not grund:
+            return name
+        if grund.lower() == name.lower():
+            return f"{name}  ⛔ schon gehabt"
+        return f"{name}  ⛔ Reihe von {grund}"
 
 
-spieler_cols = st.columns(3)
+    def pokemon_label_fuer(i):
+        """Wie pokemon_label, markiert zusätzlich, was ein anderer Trainer in diesem Link schon gewählt hat."""
+        andere = [st.session_state.get(f"p_{j}_{formular_nr}") for j in range(anzahl_spieler) if j != i]
+        andere = [a for a in andere if a]
 
-p_names = ["", "", ""]
-p_pokes = ["", "", ""]
-
-for i in range(anzahl_spieler):
-    with spieler_cols[i]:
-        name_key = f"n_{aktueller_run}_{i}"
-        p_names[i] = st.text_input(f"Name Spieler {i+1}", value=einst["spieler"][i], key=name_key, disabled=gesperrt,
-                                   on_change=name_geaendert, args=(aktueller_run, i, name_key))
-        p_pokes[i] = st.selectbox("Pokémon", POKEMON_NAMEN, index=None, disabled=gesperrt,
-                                  format_func=pokemon_label_fuer(i), placeholder="Tippen zum Suchen…",
-                                  key=f"p_{i}_{formular_nr}") or ""
+        def label(name):
+            if any(tracker_logik.gleiche_reihe(a, name) for a in andere):
+                return f"{name}  ⛔ schon in diesem Link"
+            return pokemon_label(name)
+        return label
 
 
-def spieleranzahl_setzen(neu):
-    st.session_state[anzahl_key] = neu
-    einst["anzahl_spieler"] = neu
-    tracker_logik.speichere_run_einstellungen(aktueller_run, anzahl_spieler=neu)
+    spieler_cols = st.columns(3)
+
+    p_names = ["", "", ""]
+    p_pokes = ["", "", ""]
+
+    for i in range(anzahl_spieler):
+        with spieler_cols[i]:
+            name_key = f"n_{aktueller_run}_{i}"
+            p_names[i] = st.text_input(f"Name Spieler {i+1}", value=einst["spieler"][i], key=name_key, disabled=gesperrt,
+                                       on_change=name_geaendert, args=(aktueller_run, i, name_key))
+            p_pokes[i] = st.selectbox("Pokémon", POKEMON_NAMEN, index=None, disabled=gesperrt,
+                                      format_func=pokemon_label_fuer(i), placeholder="Tippen zum Suchen…",
+                                      key=f"p_{i}_{formular_nr}") or ""
 
 
-col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 3])
-with col_btn1:
-    if anzahl_spieler < 3:
-        if st.button("➕ Spieler hinzufügen", disabled=gesperrt):
-            spieleranzahl_setzen(anzahl_spieler + 1)
-            st.rerun()
-with col_btn2:
-    if anzahl_spieler > 1:
-        if st.button("➖ Spieler entfernen", disabled=gesperrt):
-            spieleranzahl_setzen(anzahl_spieler - 1)
-            st.rerun()
+    def spieleranzahl_setzen(neu):
+        st.session_state[anzahl_key] = neu
+        einst["anzahl_spieler"] = neu
+        tracker_logik.speichere_run_einstellungen(aktueller_run, anzahl_spieler=neu)
 
-with col_btn3:
-    if st.button("💾 Link speichern", type="primary", disabled=gesperrt):
-        if not route_input or not p_pokes[0]:
-            st.warning("Bitte mindestens eine Route und ein Pokémon eingeben!")
-        else:
-            with st.spinner('Prüfe Datenbank...'):
-                erfolg, nachricht = tracker_logik.link_hinzufuegen(
-                    aktueller_run, route_input, p_names[0], p_pokes[0], p_names[1], p_pokes[1], p_names[2], p_pokes[2], status_input
-                )
-            if erfolg:
-                melde("success", nachricht)
-                st.session_state.formular_nr = formular_nr + 1  # leert Route & Pokémon-Felder
+
+    col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 3])
+    with col_btn1:
+        if anzahl_spieler < 3:
+            if st.button("➕ Spieler hinzufügen", disabled=gesperrt):
+                spieleranzahl_setzen(anzahl_spieler + 1)
                 st.rerun()
+    with col_btn2:
+        if anzahl_spieler > 1:
+            if st.button("➖ Spieler entfernen", disabled=gesperrt):
+                spieleranzahl_setzen(anzahl_spieler - 1)
+                st.rerun()
+
+    with col_btn3:
+        if st.button("💾 Link speichern", type="primary", disabled=gesperrt):
+            if not route_input or not p_pokes[0]:
+                st.warning("Bitte mindestens eine Route und ein Pokémon eingeben!")
             else:
-                st.error(nachricht)
+                with st.spinner('Prüfe Datenbank...'):
+                    erfolg, nachricht = tracker_logik.link_hinzufuegen(
+                        aktueller_run, route_input, p_names[0], p_pokes[0], p_names[1], p_pokes[1], p_names[2], p_pokes[2], status_input
+                    )
+                if erfolg:
+                    melde("success", nachricht)
+                    st.session_state.formular_nr = formular_nr + 1  # leert Route & Pokémon-Felder
+                    st.rerun()
+                else:
+                    st.error(nachricht)
+
 
 if "meldung" in st.session_state:
     art, text = st.session_state.pop("meldung")
