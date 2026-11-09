@@ -2,7 +2,7 @@ import firebase_admin
 
 # Bei jeder Änderung an dieser Datei erhöhen UND in web_app.py anpassen.
 # So erkennt die Web-App, wenn Streamlit noch eine alte Version im Speicher hat.
-MODUL_VERSION = 10
+MODUL_VERSION = 11
 from firebase_admin import credentials, firestore
 import requests
 import os
@@ -198,6 +198,65 @@ def hole_pokemon_infos(pokemon_name):
     if eintrag:
         return {"bild": SPRITE_URL.format(eintrag["id"]), "typen": eintrag["typen"] or ["Unbekannt"]}
     return _api_pokemon_infos(pokemon_name.strip())
+
+# ==========================================
+# 2a. TYPEN & SCHWÄCHEN (je nach Generation)
+# ==========================================
+# typen_tabelle.json (Quelle: PokeAPI): Effektivität aktuell + frühere Abweichungen (z.B. Gen 1, Stahl bis Gen 5)
+def _lade_typen_tabelle():
+    try:
+        with open(Path(__file__).parent.absolute() / "typen_tabelle.json", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print("Typen-Tabelle konnte nicht geladen werden:", e)
+        return {"einfuehrung": {}, "faktor": {}, "alt": []}
+
+
+TYPEN_TABELLE = _lade_typen_tabelle()
+
+
+def generation_aus_spiel(spielname):
+    """'Gen 4: Platin' -> 4. Unbekannt -> None (dann gilt die aktuelle Typen-Tabelle)."""
+    m = re.match(r"\s*Gen\s*(\d+)", spielname or "")
+    return int(m.group(1)) if m else None
+
+
+def typen_fuer(pokemon_name, generation=None):
+    """Typen eines Pokémon in einer bestimmten Generation (z.B. Piepi bis Gen 5: Normal statt Fee)."""
+    p = finde_pokemon(pokemon_name)
+    if not p:
+        return []
+    if generation:
+        for bis_gen, typen in p.get("typen_alt", []):
+            if generation <= bis_gen:
+                return list(typen)
+    return list(p.get("typen") or [])
+
+
+def _faktor(angriff, ziel, generation):
+    wert = TYPEN_TABELLE["faktor"].get(angriff, {}).get(ziel, 1.0)
+    if generation:
+        passende = [e for e in TYPEN_TABELLE["alt"] if e[1] == angriff and e[2] == ziel and generation <= e[0]]
+        if passende:
+            wert = min(passende, key=lambda e: e[0])[3]
+    return wert
+
+
+def schwaechen(pokemon_name, generation=None):
+    """Schaden aller Angriffstypen gegen das Pokémon: {4.0: [...], 2.0: [...], 1.0: [...], 0.5: [...], 0.25: [...], 0.0: [...]}.
+    Nur Typen, die es in der Generation gibt."""
+    verteidiger = typen_fuer(pokemon_name, generation)
+    if not verteidiger:
+        return {}
+    gruppen = {}
+    for angriff, eingefuehrt in TYPEN_TABELLE["einfuehrung"].items():
+        if generation and eingefuehrt > generation:
+            continue
+        gesamt = 1.0
+        for ziel in verteidiger:
+            gesamt *= _faktor(angriff, ziel, generation)
+        gruppen.setdefault(gesamt, []).append(angriff)
+    return gruppen
 
 # ==========================================
 # 2b. FANGCHANCE-RECHNER (Gen 1–5)

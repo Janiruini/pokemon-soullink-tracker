@@ -7,7 +7,7 @@ import html
 
 # Streamlit lädt nach einem Update manchmal nur web_app.py neu, aber nicht tracker_logik.py.
 # Passt die Version nicht, wird die Logik-Datei hier frisch geladen.
-ERWARTETE_LOGIK_VERSION = 10
+ERWARTETE_LOGIK_VERSION = 11
 if getattr(tracker_logik, "MODUL_VERSION", 0) != ERWARTETE_LOGIK_VERSION:
     tracker_logik = importlib.reload(tracker_logik)
 
@@ -537,95 +537,69 @@ with titel_spalte:
     st.caption(f"Aktueller Spielstand: **{aktueller_run}**{cap_hinweis}")
 
 # Kleine Typ-Suche oben rechts (z.B. für Gegner im Kampf) – nutzt die lokalen Pokémon-Daten
+GEN_NR = tracker_logik.generation_aus_spiel(gewaehlte_gen)  # Typen/Schwächen passend zum gewählten Spiel
+
+
+def fang_spiel_fuer(spielname):
+    """Welche Fangformel zum gewählten Spiel passt (ab Gen 6 als Näherung die von Gen 5)."""
+    if "HeartGold" in spielname:
+        return "HGSS"
+    gen = tracker_logik.generation_aus_spiel(spielname)
+    if gen == 4:
+        return "Gen 4 (DPPt)"
+    if gen in (1, 2, 3, 5):
+        return f"Gen {gen}"
+    return "Gen 5"
+
+
+FANG_SPIEL = fang_spiel_fuer(gewaehlte_gen)
+
+
+def typ_badges_gross(typen):
+    return "".join(
+        f"<span class='typ' style='background-color:{TYP_FARBEN.get(t, '#68A090')}; color:white; padding:1px 6px; "
+        f"border-radius:3px; font-size:12px; margin-right:4px;'>{t}</span>" for t in typen)
+
+
+SCHWAECHEN_STUFEN = [(4.0, "4×"), (2.0, "2×"), (1.0, "1×"), (0.5, "½×"), (0.25, "¼×"), (0.0, "0×")]
+
+
+def zeichne_schwaechen(pokemon_name):
+    """Schadens-Stufen gegen das Pokémon – nur Stufen, die es auch gibt."""
+    gruppen = tracker_logik.schwaechen(pokemon_name, GEN_NR)
+    zeilen = []
+    for wert, text in SCHWAECHEN_STUFEN:
+        typen = gruppen.get(wert)
+        if not typen:
+            continue
+        badges = "".join(
+            f"<span class='typ' style='background-color:{TYP_FARBEN.get(t, '#68A090')}; color:white; padding:1px 5px; "
+            f"border-radius:3px; font-size:11px; margin:0 3px 3px 0; display:inline-block;'>{t}</span>" for t in typen)
+        zeilen.append(f"<div style='display:flex; gap:6px; align-items:flex-start; margin-bottom:2px;'>"
+                      f"<b style='min-width:30px; font-size:13px;'>{text}</b><div>{badges}</div></div>")
+    st.markdown("".join(zeilen), unsafe_allow_html=True)
+    if GEN_NR:
+        st.caption(f"Typen-Tabelle von Gen {GEN_NR} (Spiel aus den Level-Caps).")
+
+
 with typ_spalte:
     gesucht = st.selectbox("Typ nachschlagen", POKEMON_NAMEN, index=None, key="typ_suche",
                            placeholder="🔍 Typ nachschlagen…", label_visibility="collapsed")
     if gesucht:
-        treffer = tracker_logik.finde_pokemon(gesucht)
-        typen = (treffer or {}).get("typen") or ["Unbekannt"]
-        badges = "".join(
-            f"<span class='typ' style='background-color:{TYP_FARBEN.get(t, '#68A090')}; color:white; padding:1px 6px; "
-            f"border-radius:3px; font-size:12px; margin-right:4px;'>{t}</span>" for t in typen)
-        st.markdown(f"<div style='font-size:13px;'><b>{html.escape(gesucht)}</b>&nbsp; {badges}</div>",
+        typen = tracker_logik.typen_fuer(gesucht, GEN_NR) or ["Unbekannt"]
+        st.markdown(f"<div style='font-size:13px;'><b>{html.escape(gesucht)}</b>&nbsp; {typ_badges_gross(typen)}</div>",
                     unsafe_allow_html=True)
-
-    # Fangchance-Rechner (Gen 1–5), nutzt das Pokémon aus der Suche darüber
-    with st.expander("🎯 Fangchance"):
-        if not gesucht:
-            st.caption("Oben ein Pokémon suchen, dann wird hier die Fangchance berechnet.")
+    with st.expander("🛡️ Schwächen", expanded=bool(gesucht)):
+        if gesucht:
+            zeichne_schwaechen(gesucht)
         else:
-            if "HeartGold" in gewaehlte_gen:
-                start_spiel = "HGSS"
-            elif gewaehlte_gen.startswith("Gen 4"):
-                start_spiel = "Gen 4 (DPPt)"
-            elif gewaehlte_gen[:5] in ("Gen 1", "Gen 2", "Gen 3", "Gen 5"):
-                start_spiel = gewaehlte_gen[:5]
-            else:
-                start_spiel = "Gen 5"
-            fc_spiel = st.selectbox("Spiel", tracker_logik.FANG_SPIELE,
-                                    index=tracker_logik.FANG_SPIELE.index(start_spiel), key="fc_spiel")
-            ball_schluessel = tracker_logik.baelle_fuer(fc_spiel)
-            fc_ball = st.selectbox("Ball", ball_schluessel, key=f"fc_ball_{fc_spiel}",
-                                   format_func=lambda k: tracker_logik.BAELLE[k][0])
-            fc_level = st.number_input("Level des wilden Pokémon", 1, 100, 10, key="fc_level")
-            fc_kp = st.slider("KP übrig (%)", 1, 100, 100, key="fc_kp")
-            fc_eins = st.checkbox("Genau 1 KP (Trugschlag)", key="fc_eins")
-            fc_status = st.selectbox("Status", tracker_logik.STATUS_LISTE, key="fc_status")
-            if fc_spiel == "Gen 2" and fc_status in ("Paralyse", "Vergiftet", "Verbrennung"):
-                st.caption("In Gen 2 bringt dieser Status nichts (Spiel-Bug) – nur Schlaf und Gefroren helfen.")
-
-            # Nur die Zusatz-Angaben, die der gewählte Ball wirklich braucht
-            extras = {}
-            if fc_ball in ("timer", "flott"):
-                extras["runde"] = st.number_input("Kampfrunde", 1, 99, 1, key="fc_runde")
-            if fc_ball == "finster":
-                extras["nacht_hoehle"] = st.checkbox("Nachts oder in einer Höhle", key="fc_nacht")
-            if fc_ball == "tauch":
-                text = "Unter Wasser (Taucher)" if fc_spiel == "Gen 3" else "Beim Surfen oder Angeln"
-                extras["wasser"] = st.checkbox(text, key="fc_wasser")
-            if fc_ball == "wieder":
-                extras["schon_gefangen"] = st.checkbox("Schon mal gefangen (Pokédex)", key="fc_wieder")
-            if fc_ball == "koeder":
-                extras["angeln"] = st.checkbox("Beim Angeln", key="fc_angeln")
-            if fc_ball == "level":
-                extras["eigenes_level"] = st.number_input("Level deines Pokémon", 1, 100, 10, key="fc_eigen")
-            if fc_ball == "sympa":
-                text = ("Dein Pokémon: gleiche Art, gleiches Geschlecht (Gen-2-Bug)" if fc_spiel == "Gen 2"
-                        else "Dein Pokémon: gleiche Art, anderes Geschlecht")
-                extras["liebe"] = st.checkbox(text, key="fc_liebe")
-            if fc_spiel == "Gen 2" and fc_ball == "mond":
-                st.caption("Der Mondball hat in Gen 2 durch einen Bug keine Wirkung.")
-            if fc_spiel == "Gen 2" and fc_ball == "turbo":
-                st.caption("Der Turboball wirkt in Gen 2 nur bei Sleima, Tangela und Magnetilo (Bug).")
-            if fc_spiel == "Gen 5":
-                extras["dichtes_gras"] = st.checkbox("Im dichten Gras", key="fc_gras")
-                extras["pokedex"] = st.number_input("Gefangene Arten im Pokédex", 0, 649, 100, key="fc_dex",
-                                                    help="Beeinflusst kritische Fänge und den Abzug im dichten Gras.")
-                kraft = st.selectbox("Fangkraft (Kontaktclub)", ["Keine", "↑ (+10 %)", "↑↑ (+20 %)", "↑↑↑ / S / MAX (+30 %)"],
-                                     key="fc_kraft")
-                extras["fangkraft"] = ["Keine", "↑ (+10 %)", "↑↑ (+20 %)", "↑↑↑ / S / MAX (+30 %)"].index(kraft)
-
-            chance, _ = tracker_logik.fangchance(gesucht, fc_ball, fc_kp, fc_status, int(fc_level), fc_spiel,
-                                                 eins_kp=fc_eins, **extras)
-            if chance is None:
-                st.caption("Für dieses Pokémon gibt es keine Fangrate.")
-            else:
-                prozent = f"{chance * 100:.1f}".replace(".", ",")
-                st.markdown(f"<div style='font-size:22px; font-weight:600;'>{prozent} %</div>", unsafe_allow_html=True)
-                wuerfe = tracker_logik.wuerfe_fuer(chance)
-                if chance >= 1:
-                    st.caption("Fängt garantiert.")
-                elif wuerfe:
-                    st.caption(f"Pro Wurf · für 90 % Sicherheit ca. {wuerfe} {'Wurf' if wuerfe == 1 else 'Würfe'}")
-            hinweis = f"Formel von {fc_spiel}; KP mit durchschnittlichen IVs/DVs geschätzt."
-            if not gewaehlte_gen.startswith(("Gen 1", "Gen 2", "Gen 3", "Gen 4", "Gen 5")):
-                hinweis += " Dein Spiel (ab Gen 6) rechnet etwas anders – Werte sind nur ein Anhaltspunkt."
-            st.caption(hinweis)
+            st.caption("Oben ein Pokémon suchen, dann siehst du hier, was wie stark trifft.")
 
 formular_nr = st.session_state.setdefault("formular_nr", 0)
 
 if gesperrt:
     st.info("🔒 Dieser Run ist geschützt. Ansehen geht, zum Eintragen und Bearbeiten links mit dem Passwort entsperren.")
+
 
 def box_rahmen(name):
     """Container mit Schlüssel (für das GBC-Design); ältere Streamlit-Versionen ohne key bekommen einen normalen."""
@@ -635,12 +609,68 @@ def box_rahmen(name):
         return st.container()
 
 
+KRAFT_STUFEN = ["Keine", "↑ (+10 %)", "↑↑ (+20 %)", "↑↑↑ / S / MAX (+30 %)"]
+
+
+def fangchance_bereich(pokemon_name, k):
+    """Fangchance-Rechner für ein Pokémon im Eingabebereich (k = Präfix für die Feld-Schlüssel).
+    Ball & Zusatzangaben bleiben gemerkt, Level/KP/Status werden nach jedem Speichern zurückgesetzt."""
+    spiel = FANG_SPIEL
+    nr = formular_nr
+    ball = st.selectbox("Ball", tracker_logik.baelle_fuer(spiel), key=f"{k}_ball_{spiel}",
+                        format_func=lambda b: tracker_logik.BAELLE[b][0])
+    level = st.number_input("Level", 1, 100, 10, key=f"{k}_level_{nr}")
+    kp = st.slider("KP übrig (%)", 1, 100, 100, key=f"{k}_kp_{nr}")
+    eins = st.checkbox("Genau 1 KP (Trugschlag)", key=f"{k}_eins_{nr}")
+    status = st.selectbox("Status", tracker_logik.STATUS_LISTE, key=f"{k}_status_{nr}")
+    if spiel == "Gen 2" and status in ("Paralyse", "Vergiftet", "Verbrennung"):
+        st.caption("In Gen 2 bringt dieser Status nichts (Spiel-Bug) – nur Schlaf und Gefroren helfen.")
+
+    extras = {}
+    if ball in ("timer", "flott"):
+        extras["runde"] = st.number_input("Kampfrunde", 1, 99, 1, key=f"{k}_runde_{nr}")
+    if ball == "finster":
+        extras["nacht_hoehle"] = st.checkbox("Nachts oder in einer Höhle", key=f"{k}_nacht")
+    if ball == "tauch":
+        extras["wasser"] = st.checkbox("Unter Wasser (Taucher)" if spiel == "Gen 3" else "Beim Surfen oder Angeln", key=f"{k}_wasser")
+    if ball == "wieder":
+        extras["schon_gefangen"] = st.checkbox("Schon mal gefangen (Pokédex)", key=f"{k}_wieder_{nr}")
+    if ball == "koeder":
+        extras["angeln"] = st.checkbox("Beim Angeln", key=f"{k}_angeln")
+    if ball == "level":
+        extras["eigenes_level"] = st.number_input("Level deines Pokémon", 1, 100, 10, key=f"{k}_eigen")
+    if ball == "sympa":
+        extras["liebe"] = st.checkbox("Dein Pokémon: gleiche Art, gleiches Geschlecht (Gen-2-Bug)" if spiel == "Gen 2"
+                                      else "Dein Pokémon: gleiche Art, anderes Geschlecht", key=f"{k}_liebe_{nr}")
+    if spiel == "Gen 2" and ball == "mond":
+        st.caption("Der Mondball hat in Gen 2 durch einen Bug keine Wirkung.")
+    if spiel == "Gen 2" and ball == "turbo":
+        st.caption("Der Turboball wirkt in Gen 2 nur bei Sleima, Tangela und Magnetilo (Bug).")
+    if spiel == "Gen 5":
+        extras["dichtes_gras"] = st.checkbox("Im dichten Gras", key=f"{k}_gras_{nr}")
+        extras["pokedex"] = st.number_input("Gefangene Arten im Pokédex", 0, 649, 100, key=f"{k}_dex",
+                                            help="Beeinflusst kritische Fänge und den Abzug im dichten Gras.")
+        extras["fangkraft"] = KRAFT_STUFEN.index(st.selectbox("Fangkraft (Kontaktclub)", KRAFT_STUFEN, key=f"{k}_kraft"))
+
+    chance, _ = tracker_logik.fangchance(pokemon_name, ball, kp, status, int(level), spiel, eins_kp=eins, **extras)
+    if chance is None:
+        st.caption("Für dieses Pokémon gibt es keine Fangrate.")
+        return
+    prozent = f"{chance * 100:.1f}".replace(".", ",")
+    st.markdown(f"<div style='font-size:22px; font-weight:600;'>{prozent} %</div>", unsafe_allow_html=True)
+    wuerfe = tracker_logik.wuerfe_fuer(chance)
+    if chance >= 1:
+        st.caption("Fängt garantiert.")
+    elif wuerfe:
+        st.caption(f"Pro Wurf · für 90 % Sicherheit ca. {wuerfe} {'Wurf' if wuerfe == 1 else 'Würfe'}")
+    hinweis = f"Formel von {spiel}; KP mit durchschnittlichen IVs/DVs geschätzt."
+    if not (GEN_NR and GEN_NR <= 5):
+        hinweis += " Dein Spiel (ab Gen 6) rechnet etwas anders – nur ein Anhaltspunkt."
+    st.caption(hinweis)
+
+
 with box_rahmen("eingabebox"):
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        route_input = st.text_input("📍 Route", placeholder="z.B. Route 1", key=f"route_{formular_nr}", disabled=gesperrt)
-    with col2:
-        status_input = st.radio("Status:", ["Gefangen", "Verpasst"], horizontal=True, disabled=gesperrt)
+    route_input = st.text_input("📍 Route", placeholder="z.B. Route 1", key=f"route_{formular_nr}", disabled=gesperrt)
 
     anzahl_key = f"anzahl_{aktueller_run}"
     if anzahl_key not in st.session_state:
@@ -691,6 +721,11 @@ with box_rahmen("eingabebox"):
             p_pokes[i] = st.selectbox("Pokémon", POKEMON_NAMEN, index=None, disabled=gesperrt,
                                       format_func=pokemon_label_fuer(i), placeholder="Tippen zum Suchen…",
                                       key=f"p_{i}_{formular_nr}") or ""
+            if p_pokes[i]:
+                st.markdown(typ_badges_gross(tracker_logik.typen_fuer(p_pokes[i], GEN_NR) or ["Unbekannt"]),
+                            unsafe_allow_html=True)
+                with st.expander("🎯 Fangchance"):
+                    fangchance_bereich(p_pokes[i], f"fc{i}")
 
 
     def spieleranzahl_setzen(neu):
@@ -699,7 +734,23 @@ with box_rahmen("eingabebox"):
         tracker_logik.speichere_run_einstellungen(aktueller_run, anzahl_spieler=neu)
 
 
-    col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 3])
+    def link_speichern(status):
+        if not route_input or not p_pokes[0]:
+            st.warning("Bitte mindestens eine Route und ein Pokémon eingeben!")
+            return
+        with st.spinner('Prüfe Datenbank...'):
+            erfolg, nachricht = tracker_logik.link_hinzufuegen(
+                aktueller_run, route_input, p_names[0], p_pokes[0], p_names[1], p_pokes[1], p_names[2], p_pokes[2], status
+            )
+        if erfolg:
+            melde("success", nachricht)
+            st.session_state.formular_nr = formular_nr + 1  # leert Route, Pokémon & Fangchance-Felder
+            st.rerun()
+        else:
+            st.error(nachricht)
+
+
+    col_btn1, col_btn2, col_gef, col_verp = st.columns([1, 1, 1.5, 1.5])
     with col_btn1:
         if anzahl_spieler < 3:
             if st.button("➕ Spieler hinzufügen", disabled=gesperrt):
@@ -710,22 +761,12 @@ with box_rahmen("eingabebox"):
             if st.button("➖ Spieler entfernen", disabled=gesperrt):
                 spieleranzahl_setzen(anzahl_spieler - 1)
                 st.rerun()
-
-    with col_btn3:
-        if st.button("💾 Link speichern", type="primary", disabled=gesperrt):
-            if not route_input or not p_pokes[0]:
-                st.warning("Bitte mindestens eine Route und ein Pokémon eingeben!")
-            else:
-                with st.spinner('Prüfe Datenbank...'):
-                    erfolg, nachricht = tracker_logik.link_hinzufuegen(
-                        aktueller_run, route_input, p_names[0], p_pokes[0], p_names[1], p_pokes[1], p_names[2], p_pokes[2], status_input
-                    )
-                if erfolg:
-                    melde("success", nachricht)
-                    st.session_state.formular_nr = formular_nr + 1  # leert Route & Pokémon-Felder
-                    st.rerun()
-                else:
-                    st.error(nachricht)
+    with col_gef:
+        if st.button("✅ Gefangen speichern", type="primary", disabled=gesperrt):
+            link_speichern("Gefangen")
+    with col_verp:
+        if st.button("🏃 Verpasst speichern", disabled=gesperrt):
+            link_speichern("Verpasst")
 
 
 if "meldung" in st.session_state:
