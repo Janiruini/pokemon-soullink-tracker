@@ -599,7 +599,7 @@ def typ_bereich():
                            placeholder="🔍 Typ nachschlagen…", label_visibility="collapsed")
     if gesucht:
         typen = tracker_logik.typen_fuer(gesucht, GEN_NR) or ["Unbekannt"]
-        st.markdown(f"<div style='font-size:13px;'><b>{html.escape(gesucht)}</b>&nbsp; {typ_badges_gross(typen)}</div>",
+        st.markdown(f"<div style='font-size:13px; margin-bottom:0.75rem;'><b>{html.escape(gesucht)}</b>&nbsp; {typ_badges_gross(typen)}</div>",
                     unsafe_allow_html=True)
     with st.expander("🛡️ Schwächen", expanded=bool(gesucht)):
         if gesucht:
@@ -739,7 +739,8 @@ with box_rahmen("eingabebox", eingabe_spalte):
                                       format_func=pokemon_label_fuer(i), placeholder="Tippen zum Suchen…",
                                       key=f"p_{i}_{formular_nr}") or ""
             if p_pokes[i]:
-                st.markdown(typ_badges_gross(tracker_logik.typen_fuer(p_pokes[i], GEN_NR) or ["Unbekannt"]),
+                st.markdown("<div style='margin-bottom:0.75rem;'>"
+                            + typ_badges_gross(tracker_logik.typen_fuer(p_pokes[i], GEN_NR) or ["Unbekannt"]) + "</div>",
                             unsafe_allow_html=True)
                 with st.expander("🎯 Fangchance"):
                     fangchance_bereich(p_pokes[i], f"fc{i}")
