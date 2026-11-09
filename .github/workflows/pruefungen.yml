@@ -1,0 +1,23 @@
+name: Prüfungen
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pruefen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # auch der Branch backup-vor-update wird für die Rückfall-Prüfung gebraucht
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Abhängigkeiten installieren
+        run: pip install requests
+      - name: Alle Prüfungen ausführen
+        run: python tests/alle.py
