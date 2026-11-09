@@ -69,17 +69,56 @@ GBC_CSS = """
 /* Seitenleiste */
 [data-testid="stSidebar"] { background: #10131B !important; border-right: 3px solid var(--gbc-shell); }
 [data-testid="stSidebar"] p, [data-testid="stSidebar"] label { color: var(--gbc-text) !important; }
-/* Eingabefelder und Auswahllisten */
-.stApp [data-baseweb="input"], .stApp [data-baseweb="select"] > div, .stApp [data-baseweb="textarea"] {
-    background: var(--gbc-feld) !important; border: 2px solid var(--gbc-feldrand) !important; border-radius: 4px !important; }
-.stApp [data-baseweb="input"] input, .stApp [data-baseweb="select"] > div div, .stApp [data-baseweb="textarea"] textarea {
+/* Eingabefelder, Auswahllisten, Zahlenfelder: GBC-Textfeld (dunkler Rand + goldene Innenlinie) */
+[data-baseweb="input"], [data-baseweb="select"] > div, [data-baseweb="textarea"] {
+    background: var(--gbc-feld) !important; border: 3px solid var(--gbc-rand) !important; border-radius: 6px !important;
+    box-shadow: inset 0 0 0 2px rgba(176, 125, 18, 0.55) !important; }
+[data-baseweb="input"]:focus-within, [data-baseweb="select"] > div:focus-within, [data-baseweb="textarea"]:focus-within {
+    box-shadow: inset 0 0 0 2px var(--gbc-acc) !important; }
+[data-baseweb="base-input"] { background: transparent !important; }
+[data-baseweb="input"] input, [data-baseweb="select"] > div div, [data-baseweb="textarea"] textarea {
     color: var(--gbc-text) !important; background: transparent !important; }
-/* Buttons: primär = runder A-Knopf in Gehäusefarbe */
-.stApp button[kind="primary"], .stApp [data-testid="stBaseButton-primary"] {
-    background: var(--gbc-shell) !important; color: #FFFFFF !important; border: 2px solid var(--gbc-rand) !important; border-radius: 16px !important; }
-.stApp button[kind="secondary"], .stApp [data-testid="stBaseButton-secondary"], .stApp [data-testid="stPopover"] button {
-    background: var(--gbc-box) !important; color: var(--gbc-text) !important; border: 2px solid var(--gbc-feldrand) !important; }
+[data-baseweb="input"] input::placeholder, [data-baseweb="textarea"] textarea::placeholder { color: var(--gbc-leise) !important; }
+[data-baseweb="select"] svg { color: var(--gbc-acc) !important; fill: var(--gbc-acc) !important; }
+[data-testid="stNumberInput"] button { background: var(--gbc-box) !important; color: var(--gbc-acc) !important; }
+/* Aufklappende Listen der Auswahlfelder */
+[data-baseweb="popover"] [role="listbox"], [data-baseweb="popover"] ul, [data-baseweb="menu"] {
+    background: var(--gbc-box) !important; border: 3px solid var(--gbc-rand) !important; border-radius: 6px !important; }
+[data-baseweb="popover"] [role="option"], [data-baseweb="popover"] li { color: var(--gbc-text) !important; background: transparent !important; }
+[data-baseweb="popover"] [role="option"]:hover, [data-baseweb="popover"] [aria-selected="true"], [data-baseweb="popover"] li:hover {
+    background: #3A4256 !important; color: var(--gbc-acc) !important; }
+/* Popover-Fenster (Bearbeiten / Löschen) */
+[data-testid="stPopoverBody"] { background: var(--gbc-box) !important; border: 3px solid var(--gbc-rand) !important;
+    box-shadow: inset 0 0 0 2px var(--gbc-box), inset 0 0 0 4px var(--gbc-shell) !important; }
+[data-testid="stPopoverBody"] p, [data-testid="stPopoverBody"] label { color: var(--gbc-text) !important; }
+/* Buttons: primär = runder A-Knopf in Gehäusefarbe, sonst GBC-Box */
+button[kind="primary"], [data-testid="stBaseButton-primary"], [data-testid="stFormSubmitButton"] button {
+    background: var(--gbc-shell) !important; color: #FFFFFF !important; border: 3px solid var(--gbc-rand) !important; border-radius: 18px !important;
+    box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.25) !important; }
+button[kind="primary"] p, [data-testid="stBaseButton-primary"] p { font-family: 'Press Start 2P', monospace !important; font-size: 0.6rem !important; line-height: 1.6 !important; }
+button[kind="secondary"], [data-testid="stBaseButton-secondary"], [data-testid="stPopover"] button, [data-testid="stNumberInput"] button {
+    background: var(--gbc-box) !important; color: var(--gbc-text) !important; border: 3px solid var(--gbc-rand) !important; border-radius: 6px !important;
+    box-shadow: inset 0 0 0 2px rgba(176, 125, 18, 0.55) !important; }
+button[kind="secondary"]:hover, [data-testid="stBaseButton-secondary"]:hover, [data-testid="stPopover"] button:hover {
+    box-shadow: inset 0 0 0 2px var(--gbc-acc) !important; color: var(--gbc-acc) !important; }
+button:disabled { opacity: 0.45 !important; }
 .stApp button p { color: inherit !important; }
+/* Häkchen, Schalter, Auswahlpunkte und Regler in Gold statt Streamlit-Rot */
+[data-testid="stCheckbox"] label > span:first-child { background-color: var(--gbc-feld) !important; border: 2px solid var(--gbc-feldrand) !important; border-radius: 3px !important; }
+[data-testid="stCheckbox"] label:has(input:checked) > span:first-child { background-color: var(--gbc-shell) !important; border-color: var(--gbc-acc) !important; }
+[data-testid="stCheckbox"] label:has(input:checked) > div:first-child { background-color: var(--gbc-shell) !important; }
+[data-testid="stCheckbox"] label:not(:has(input:checked)) > div:first-child { background-color: var(--gbc-feldrand) !important; }
+[data-testid="stRadio"] label > div:first-child { border-color: var(--gbc-feldrand) !important; }
+[data-testid="stRadio"] label:has(input:checked) > div:first-child { background-color: var(--gbc-shell) !important; border-color: var(--gbc-acc) !important; }
+[data-testid="stSlider"] [data-baseweb="slider"] { filter: hue-rotate(38deg) saturate(0.85); }
+/* Hinweisboxen (z.B. "Bearbeiten freigeschaltet", "Nächster Cap") als GBC-Textbox */
+[data-testid="stAlert"], [data-testid="stAlertContainer"] { background: var(--gbc-box) !important; border: 3px solid var(--gbc-rand) !important;
+    border-radius: 6px !important; box-shadow: inset 0 0 0 2px var(--gbc-box), inset 0 0 0 4px var(--gbc-shell) !important; }
+[data-testid="stAlert"] *, [data-testid="stAlertContainer"] * { background: transparent !important; color: var(--gbc-text) !important; }
+[data-testid="stAlert"]:has([data-testid="stAlertContentSuccess"]) p { color: #9FE0A3 !important; }
+[data-testid="stAlert"]:has([data-testid="stAlertContentWarning"]) p, [data-testid="stAlert"]:has([data-testid="stAlertContentInfo"]) p { color: var(--gbc-acc) !important; }
+[data-testid="stAlert"]:has([data-testid="stAlertContentError"]) p { color: #FF9A8F !important; }
+[data-testid="stAlert"]:has([data-testid="stAlertContentError"]) { box-shadow: inset 0 0 0 2px var(--gbc-box), inset 0 0 0 4px #C0392B !important; }
 /* Boxen im Gold/Silber-Stil: dicker dunkler Rand + feine Innenlinie in Gehäusefarbe */
 [class*="st-key-zeile_"], [data-testid="stExpander"] details, [data-testid="stMetric"] {
     background: var(--gbc-box) !important; border: 3px solid var(--gbc-rand) !important; border-radius: 6px !important;
