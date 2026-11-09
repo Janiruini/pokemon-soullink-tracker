@@ -30,6 +30,9 @@ st.markdown("""
     <style>
     div[data-testid="stVerticalBlock"] { gap: 0.5rem; }
 
+    /* Gefangen/Verpasst: gleich groß, füllen ihre Spalte */
+    .st-key-btn_gefangen button, .st-key-btn_verpasst button { width: 100% !important; min-height: 42px !important; }
+
     /* Aktionsleiste über den Team-Slots: kleinere Buttons */
     [class*="st-key-teamaktionen_"] button { min-height: 30px !important; padding: 2px 8px !important; }
     [class*="st-key-teamaktionen_"] [data-testid="stCheckbox"] { justify-content: center; }
@@ -116,7 +119,7 @@ GBC_CSS = """
 button[kind="primary"], [data-testid="stBaseButton-primary"], [data-testid="stFormSubmitButton"] button {
     background: var(--gbc-shell) !important; color: #FFFFFF !important; border: 3px solid var(--gbc-rand) !important; border-radius: 18px !important;
     box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.25) !important; }
-button[kind="primary"] p, [data-testid="stBaseButton-primary"] p { font-family: 'Press Start 2P', monospace !important; font-size: 0.6rem !important; line-height: 1.6 !important; }
+button[kind="primary"] p, [data-testid="stBaseButton-primary"] p, .st-key-btn_verpasst button p { font-family: 'Press Start 2P', monospace !important; font-size: 0.6rem !important; line-height: 1.6 !important; }
 button[kind="secondary"], [data-testid="stBaseButton-secondary"], [data-testid="stPopover"] button, [data-testid="stNumberInput"] button {
     background: var(--gbc-box) !important; color: var(--gbc-text) !important; border: 3px solid var(--gbc-rand) !important; border-radius: 6px !important;
     box-shadow: inset 0 0 0 2px rgba(176, 125, 18, 0.55) !important; }
@@ -846,10 +849,10 @@ with box_rahmen("eingabebox", eingabe_spalte):
                 spieleranzahl_setzen(anzahl_spieler - 1)
                 st.rerun()
     with col_gef:
-        if st.button("✅ Gefangen speichern", type="primary", disabled=gesperrt):
+        if st.button("Gefangen speichern", key="btn_gefangen", type="primary", disabled=gesperrt):
             link_speichern("Gefangen")
     with col_verp:
-        if st.button("🏃 Verpasst speichern", disabled=gesperrt):
+        if st.button("Verpasst speichern", key="btn_verpasst", disabled=gesperrt):
             link_speichern("Verpasst")
 
 
