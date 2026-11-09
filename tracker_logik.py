@@ -2,7 +2,7 @@ import firebase_admin
 
 # Bei jeder Änderung an dieser Datei erhöhen UND in web_app.py anpassen.
 # So erkennt die Web-App, wenn Streamlit noch eine alte Version im Speicher hat.
-MODUL_VERSION = 14
+MODUL_VERSION = 15
 from firebase_admin import credentials, firestore
 import requests
 import os
@@ -12,6 +12,9 @@ import json
 import hashlib
 import hmac
 import math
+import threading
+import time
+import copy
 from pathlib import Path
 
 # ==========================================
@@ -503,6 +506,68 @@ def _geschrieben(art=None):
             print("Zwischenspeicher konnte nicht geleert werden:", e)
 
 
+# ---------- Mitgeführter Zwischenspeicher für die Links eines Runs ----------
+# Die Links eines Runs werden einmal aus Firebase gelesen und danach im Arbeitsspeicher der App
+# mitgeführt: Jede Änderung wird ZUERST in Firebase geschrieben und danach hier nachgetragen.
+# Dadurch kostet Eintragen, Team, Friedhof usw. keine Lesevorgänge mehr. Der Speicher gilt für
+# alle Besucher gemeinsam; spätestens nach LINK_CACHE_TTL Sekunden wird frisch aus Firebase gelesen
+# (falls jemand direkt in der Firebase-Konsole etwas ändert). Schlägt ein Schreibzugriff fehl,
+# wird der Speicher verworfen und beim nächsten Zugriff neu geladen.
+LINK_CACHE_TTL = 600
+_CACHE_SPERRE = threading.RLock()
+_LINK_CACHE = {}  # run_id -> {"zeit": Zeitpunkt des Ladens, "links": {doc_id: Eintrag}}
+
+
+def _cache_links(run_id):
+    """Die mitgeführten Links eines Runs (lädt bei Bedarf aus Firebase). Nur unter _CACHE_SPERRE benutzen."""
+    eintrag = _LINK_CACHE.get(run_id)
+    if eintrag and time.time() - eintrag["zeit"] < LINK_CACHE_TTL:
+        return eintrag["links"]
+    links = {}
+    for doc in db.collection("links").where("run_id", "==", run_id).stream():
+        d = doc.to_dict()
+        d["id"] = doc.id
+        links[doc.id] = d
+    _LINK_CACHE[run_id] = {"zeit": time.time(), "links": links}
+    return links
+
+
+def lade_daten_cache(run_id):
+    """Alle Links eines Runs aus dem Zwischenspeicher (gleiche Reihenfolge wie Firebase: nach Dokument-ID)."""
+    with _CACHE_SPERRE:
+        links = _cache_links(run_id)
+        return [copy.deepcopy(links[k]) for k in sorted(links)]
+
+
+def cache_verwerfen(run_id=None):
+    """Zwischenspeicher eines Runs (oder aller) leeren -> nächster Zugriff liest frisch aus Firebase."""
+    with _CACHE_SPERRE:
+        if run_id is None:
+            _LINK_CACHE.clear()
+        else:
+            _LINK_CACHE.pop(run_id, None)
+
+
+def _cache_nachtragen(doc_id, felder=None, loeschen=False):
+    """Trägt eine erfolgreich gespeicherte Änderung im Zwischenspeicher nach."""
+    with _CACHE_SPERRE:
+        for eintrag in _LINK_CACHE.values():
+            if doc_id in eintrag["links"]:
+                if loeschen:
+                    del eintrag["links"][doc_id]
+                else:
+                    eintrag["links"][doc_id].update(copy.deepcopy(felder))
+                return
+
+
+def _cache_run_von(doc_id):
+    with _CACHE_SPERRE:
+        for run_id, eintrag in _LINK_CACHE.items():
+            if doc_id in eintrag["links"]:
+                return run_id
+    return None
+
+
 def lade_daten(run_id, fehler_werfen=False):
     """Lädt alle Daten für die Web-App Anzeige."""
     try:
@@ -520,7 +585,13 @@ def lade_daten(run_id, fehler_werfen=False):
 
 
 def link_hinzufuegen(run_id, route, n1, p1, n2, p2, n3, p3, status, static=False):
-    """Speichert neuen Link. Führt Routen- und Dupes-Checks durch (außer bei 'Static')."""
+    """Speichert neuen Link. Führt Routen- und Dupes-Checks durch (außer bei 'Static').
+    Prüfen und Speichern laufen am Stück, damit zwei gleichzeitige Einträge sich nicht überholen."""
+    with _CACHE_SPERRE:
+        return _link_hinzufuegen(run_id, route, n1, p1, n2, p2, n3, p3, status, static)
+
+
+def _link_hinzufuegen(run_id, route, n1, p1, n2, p2, n3, p3, status, static=False):
     route_raw = route.strip()
     route_suche = route_raw.lower()
 
@@ -534,12 +605,14 @@ def link_hinzufuegen(run_id, route, n1, p1, n2, p2, n3, p3, status, static=False
         if fehler:
             return False, fehler
 
-        # Lade alle Bisherigen Links aus diesem Run, um sie zu prüfen
-        alle_links = db.collection("links").where("run_id", "==", run_id).stream()
+        # Alle bisherigen Links dieses Runs prüfen (aus dem mitgeführten Zwischenspeicher)
+        try:
+            alle_links = lade_daten_cache(run_id)
+        except Exception as e:
+            return False, f"Cloud-Fehler: {e}"
 
         gefangene_pokemon = []
-        for doc in alle_links:
-            d = doc.to_dict()
+        for d in alle_links:
 
             # 1. ROUTEN-CHECK (Static-Links belegen keine Route)
             if not d.get("static") and d.get("route", "").strip().lower() == route_suche:
@@ -585,7 +658,10 @@ def link_hinzufuegen(run_id, route, n1, p1, n2, p2, n3, p3, status, static=False
         neuer_link["static"] = True
 
     try:
-        db.collection("links").add(neuer_link)
+        _, ref = db.collection("links").add(neuer_link)
+        with _CACHE_SPERRE:
+            if run_id in _LINK_CACHE:
+                _LINK_CACHE[run_id]["links"][ref.id] = dict(copy.deepcopy(neuer_link), id=ref.id)
         _geschrieben("links")
         # Run im Run-Verzeichnis sicherstellen (falls er z.B. nur über die Adresse geöffnet wurde)
         try:
@@ -594,6 +670,7 @@ def link_hinzufuegen(run_id, route, n1, p1, n2, p2, n3, p3, status, static=False
             print("Run-Verzeichnis konnte nicht aktualisiert werden:", e)
         return True, f"Erfolgreich gespeichert! {'(Static Bonus verwendet)' if is_static else ''}"
     except Exception as e:
+        cache_verwerfen(run_id)
         return False, f"Cloud-Fehler: {e}"
 
 
@@ -622,30 +699,42 @@ def link_bearbeiten(doc_id, alter_eintrag, route, namen, pokes):
             update[f"i{nr}"] = hole_pokemon_infos(poke)
     try:
         db.collection("links").document(doc_id).update(update)
+        _cache_nachtragen(doc_id, update)
         _geschrieben("links")
         return True, "Änderung gespeichert!"
     except Exception as e:
+        cache_verwerfen(_cache_run_von(doc_id))
         return False, f"Cloud-Fehler: {e}"
 
 
 def status_aendern(doc_id, neuer_status):
     """Verschiebt einen Link zwischen Aktiv, Verpasst und Friedhof."""
+    felder = {"status": neuer_status, "in_team": False}
     try:
-        db.collection("links").document(doc_id).update({"status": neuer_status, "in_team": False})
+        db.collection("links").document(doc_id).update(felder)
+        _cache_nachtragen(doc_id, felder)
+    except Exception:
+        cache_verwerfen(_cache_run_von(doc_id))
+        raise
     finally:
         _geschrieben("links")
 
 
 def team_status_aendern(run_id, doc_id, im_team):
     """Setzt Pokémon ins Team (Check auf max 6)."""
-    if im_team:
-        aktuelles_team = db.collection("links").where("run_id", "==", run_id).where("in_team", "==", True).get()
-        if len(aktuelles_team) >= 6:
-            return False, "Team ist bereits voll (max. 6)!"
-    try:
-        db.collection("links").document(doc_id).update({"in_team": im_team})
-    finally:
-        _geschrieben("links")
+    with _CACHE_SPERRE:  # Prüfen und Setzen zusammen, damit zwei gleichzeitige Klicks nicht 7 ergeben
+        if im_team:
+            im_team_jetzt = sum(1 for l in lade_daten_cache(run_id) if l.get("in_team") and l.get("id") != doc_id)
+            if im_team_jetzt >= 6:
+                return False, "Team ist bereits voll (max. 6)!"
+        try:
+            db.collection("links").document(doc_id).update({"in_team": im_team})
+            _cache_nachtragen(doc_id, {"in_team": im_team})
+        except Exception:
+            cache_verwerfen(run_id)
+            raise
+        finally:
+            _geschrieben("links")
     return True, "OK"
 
 
@@ -653,6 +742,10 @@ def link_loeschen(doc_id):
     """Löscht einen Eintrag komplett."""
     try:
         db.collection("links").document(doc_id).delete()
+        _cache_nachtragen(doc_id, loeschen=True)
+    except Exception:
+        cache_verwerfen(_cache_run_von(doc_id))
+        raise
     finally:
         _geschrieben("links")
 
@@ -787,6 +880,7 @@ def run_loeschen(run_id):
         print("Fehler beim Löschen des Runs:", e)
         return False, anzahl
     finally:
+        cache_verwerfen(run_id)
         _geschrieben()
 
 

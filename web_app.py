@@ -7,7 +7,7 @@ import html
 
 # Streamlit lädt nach einem Update manchmal nur web_app.py neu, aber nicht tracker_logik.py.
 # Passt die Version nicht, wird die Logik-Datei hier frisch geladen.
-ERWARTETE_LOGIK_VERSION = 14
+ERWARTETE_LOGIK_VERSION = 15
 if getattr(tracker_logik, "MODUL_VERSION", 0) != ERWARTETE_LOGIK_VERSION:
     tracker_logik = importlib.reload(tracker_logik)
 
@@ -142,6 +142,11 @@ GBC_CSS = """
 [data-baseweb="popover"] [role="option"], [data-baseweb="popover"] li { color: var(--gbc-text) !important; background: transparent !important; }
 [data-baseweb="popover"] [role="option"]:hover, [data-baseweb="popover"] [aria-selected="true"], [data-baseweb="popover"] li:hover {
     background: #3A4256 !important; color: var(--gbc-acc) !important; }
+/* Bearbeiten-Fenster */
+[data-testid="stDialog"] [role="dialog"] { background: var(--gbc-box) !important; border: 3px solid var(--gbc-rand) !important; border-radius: 8px !important;
+    box-shadow: inset 0 0 0 2px var(--gbc-box), inset 0 0 0 4px var(--gbc-shell) !important; color: var(--gbc-text) !important; }
+[data-testid="stDialog"] [role="dialog"] p, [data-testid="stDialog"] [role="dialog"] label { color: var(--gbc-text) !important; }
+[data-testid="stDialog"] [role="dialog"] h2 { font-family: 'Press Start 2P', monospace !important; font-size: 0.8rem !important; color: var(--gbc-acc) !important; }
 /* Popover-Fenster (Bearbeiten / Löschen) */
 [data-testid="stPopoverBody"] { background: var(--gbc-box) !important; border: 3px solid var(--gbc-rand) !important;
     box-shadow: inset 0 0 0 2px var(--gbc-box), inset 0 0 0 4px var(--gbc-shell) !important; }
@@ -258,24 +263,17 @@ span.typ { filter: brightness(0.88); font-family: 'Press Start 2P', monospace !i
 
 
 # ---------- Zwischenspeicher (spart Firebase-Lesevorgänge) ----------
-# Einträge und Einstellungen eines Runs werden zwischengespeichert und von allen Besuchern geteilt.
-# Jeder Schreibzugriff über die App leert den Speicher sofort (tracker_logik.NACH_SCHREIBEN),
-# daher sieht jeder – auch der Mitspieler – nach dem nächsten Klick den aktuellen Stand.
-# Spätestens nach 10 Minuten wird ohnehin neu geladen (falls jemand direkt in Firebase etwas ändert).
-@st.cache_data(ttl=600, show_spinner=False)
-def daten_zwischenspeicher(run_id):
-    return tracker_logik.lade_daten(run_id, fehler_werfen=True)
-
-
+# Links: tracker_logik führt einen Zwischenspeicher mit und trägt jede gespeicherte Änderung dort nach
+#        (siehe tracker_logik.lade_daten_cache) -> Eintragen, Team, Friedhof kosten keine Lesevorgänge.
+# Einstellungen: werden hier zwischengespeichert und nach jeder Änderung neu geladen (1 Lesevorgang).
+# Beides gilt für alle Besucher gemeinsam; spätestens nach 10 Minuten wird frisch aus Firebase gelesen.
 @st.cache_data(ttl=600, show_spinner=False)
 def einstellungen_zwischenspeicher(run_id):
     return tracker_logik.lade_run_einstellungen(run_id, fehler_werfen=True)
 
 
 def zwischenspeicher_leeren(art=None):
-    """Nur das neu laden, was sich geändert hat (z.B. Orden abhaken lädt nicht alle Links neu)."""
-    if art in (None, "links"):
-        daten_zwischenspeicher.clear()
+    """Nach einer Einstellungs-Änderung die Einstellungen neu laden (die Links führt tracker_logik selbst mit)."""
     if art in (None, "einstellungen"):
         einstellungen_zwischenspeicher.clear()
 
@@ -285,7 +283,7 @@ tracker_logik.NACH_SCHREIBEN[:] = [zwischenspeicher_leeren]
 
 def lade_daten_schnell(run_id):
     try:
-        return daten_zwischenspeicher(run_id)
+        return tracker_logik.lade_daten_cache(run_id)
     except Exception as e:  # Fehler werden nicht zwischengespeichert -> nächster Klick versucht es neu
         print("Daten konnten nicht geladen werden:", e)
         return []
@@ -984,10 +982,11 @@ st.divider()
 # ==========================================
 # 4. KOMPAKTE LISTEN-ZEICHNUNG
 # ==========================================
-def bearbeiten_formular(eintrag):
+def bearbeiten_formular(eintrag, mit_titel=True):
     link_id = eintrag["id"]
     with st.form(key=f"edit_{link_id}"):
-        st.markdown("**Link bearbeiten**")
+        if mit_titel:
+            st.markdown("**Link bearbeiten**")
         neue_route = st.text_input("📍 Route", value=eintrag.get("route", ""), key=f"er_{link_id}")
         namen, pokes = [], []
         for idx in range(3):
@@ -1012,6 +1011,17 @@ def bearbeiten_formular(eintrag):
             st.rerun()
 
 
+# Das Bearbeiten-Formular enthält pro Spieler eine Auswahlliste mit allen Pokémon. Früher wurde es für
+# JEDEN Link bei jedem Klick mit aufgebaut (bei 60 Links über 120.000 Listeneinträge pro Seitenaufbau).
+# Jetzt entsteht es erst, wenn man wirklich auf "Bearbeiten" klickt – als eigenes Fenster.
+if hasattr(st, "dialog"):
+    @st.dialog("Link bearbeiten")
+    def bearbeiten_fenster(eintrag):
+        bearbeiten_formular(eintrag, mit_titel=False)
+else:
+    bearbeiten_fenster = None
+
+
 def team_umschalten(run, link_id, key):
     erfolg, msg = tracker_logik.team_status_aendern(run, link_id, st.session_state[key])
     if not erfolg:
@@ -1028,8 +1038,12 @@ def zeichne_aktionen(eintrag, zeige_checkbox, spalten):
             st.session_state[team_key] = bool(eintrag.get("in_team", False))
             st.checkbox("Im Team", key=team_key, disabled=gesperrt, on_change=team_umschalten, args=(aktueller_run, link_id, team_key))
     with spalten[1]:
-        with st.popover("✏️", help="Bearbeiten (z.B. nach einer Entwicklung)", disabled=gesperrt):
-            bearbeiten_formular(eintrag)
+        if bearbeiten_fenster:
+            if st.button("✏️", key=f"e_{link_id}", help="Bearbeiten (z.B. nach einer Entwicklung)", disabled=gesperrt):
+                bearbeiten_fenster(eintrag)
+        else:  # ältere Streamlit-Version ohne Fenster
+            with st.popover("✏️", help="Bearbeiten (z.B. nach einer Entwicklung)", disabled=gesperrt):
+                bearbeiten_formular(eintrag)
     with spalten[2]:
         if status == "aktiv":
             if st.button("🏃", key=f"v_{link_id}", help="Verpasst", disabled=gesperrt): tracker_logik.status_aendern(link_id, "verpasst"); st.rerun()
@@ -1106,8 +1120,12 @@ def aktionen_menue(eintrag):
         else:
             if st.button("🏃 Verpasst", key=f"v2_{link_id}", disabled=gesperrt):
                 tracker_logik.status_aendern(link_id, "verpasst"); st.rerun()
-        with st.expander("✏️ Bearbeiten"):
-            bearbeiten_formular(eintrag)
+        if bearbeiten_fenster:
+            if st.button("✏️ Bearbeiten", key=f"e_{link_id}", disabled=gesperrt):
+                bearbeiten_fenster(eintrag)
+        else:  # ältere Streamlit-Version ohne Fenster
+            with st.expander("✏️ Bearbeiten"):
+                bearbeiten_formular(eintrag)
         frage_key = f"loeschfrage_{link_id}"
         if not st.session_state.get(frage_key):
             if st.button("🗑️ Löschen", key=f"dfrage_{link_id}", disabled=gesperrt):
