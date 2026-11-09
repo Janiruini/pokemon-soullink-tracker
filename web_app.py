@@ -173,11 +173,11 @@ button:disabled { opacity: 0.45 !important; }
 /* Team-Slots im GBC-Look */
 [class*="st-key-teamslot_"] { background: var(--gbc-box) !important; border: 3px solid var(--gbc-rand) !important; border-radius: 6px !important;
     box-shadow: inset 0 0 0 2px var(--gbc-box), inset 0 0 0 4px var(--gbc-shell) !important; }
-[class*="st-key-slot_"] { background: var(--gbc-slot) !important; border: 2px solid var(--gbc-rand); }
+[class*="st-key-slot_"] { background: #F4F1E6 !important; border: 2px solid var(--gbc-rand); }
 .teamslot-route { color: var(--gbc-acc) !important; font-family: 'Press Start 2P', monospace; font-size: 0.7rem; }
-.teamslot .ring { background: var(--gbc-feld) !important; }
-.teamslot .trainer { color: var(--gbc-leise) !important; }
-.teamslot .pname { color: var(--gbc-text) !important; font-family: 'Press Start 2P', monospace; font-size: 0.62rem; line-height: 1.8 !important; }
+.teamslot .ring { background: #FFFFFF !important; }
+.teamslot .trainer { color: #7A6420 !important; }
+.teamslot .pname { color: #1E2230 !important; font-family: 'Press Start 2P', monospace; font-size: 0.62rem; line-height: 1.8 !important; }
 /* Typ-Farben etwas gedimmt, damit sie auf Dunkel nicht grell leuchten */
 span.typ { filter: brightness(0.85); }
 </style>
